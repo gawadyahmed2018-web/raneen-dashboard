@@ -70,6 +70,13 @@ def get_price_changes(df):
             results.extend(changes)
     return pd.DataFrame(results) if results else pd.DataFrame()
 
+# ── DEFAULT DATA URL ─────────────────────────────────────────────────────────
+DEFAULT_DATA_URL = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/raneen_default_data.csv"
+
+@st.cache_data(ttl=3600)
+def load_default():
+    return pd.read_csv(DEFAULT_DATA_URL)
+
 # ── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 📊 Raneen Analytics")
@@ -80,12 +87,35 @@ with st.sidebar:
     st.markdown("1. نزّل الشيت من ماجينتو\n2. ارفعه هنا\n3. الداشبورد بيظهر فوراً")
 
 # ── MAIN ─────────────────────────────────────────────────────────────────────
-if uploaded is None:
-    st.markdown("## 👈 ارفع الشيت من القايمة الجانبية")
-    st.info("بترفع CSV من ماجينتو وبيظهر الداشبورد فوراً")
-    st.stop()
+using_default = uploaded is None
 
-df_full = process(uploaded)
+if using_default:
+    try:
+        df_full = load_default()
+        # Make sure Purchase Date is parsed
+        df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
+        if "Day" not in df_full.columns:
+            df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
+        # Show update button at top
+        st.markdown("""
+        <div style="background:#1F3864;border-radius:10px;padding:1rem 1.5rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <p style="color:#85b7eb;font-size:12px;margin:0">📊 عارض داتا آخر شيت محفوظ — 1 إلى 10 أبريل 2026</p>
+            <p style="color:#fff;font-size:11px;margin:4px 0 0;opacity:.7">لتحديث البيانات ارفع شيت ماجينتو الجديد من القايمة الجانبية</p>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.sidebar.markdown("""
+        <div style="background:#d85a30;border-radius:8px;padding:.75rem 1rem;text-align:center;margin-bottom:.5rem">
+          <p style="color:white;font-size:13px;font-weight:600;margin:0">⬆️ أضف الشيت المحدَّث هنا</p>
+          <p style="color:rgba(255,255,255,.8);font-size:11px;margin:4px 0 0">لتحديث بيانات الداشبورد</p>
+        </div>
+        """, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"تعذّر تحميل البيانات الافتراضية: {e}")
+        st.stop()
+else:
+    df_full = process(uploaded)
 all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
 all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
 
