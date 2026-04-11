@@ -85,7 +85,34 @@ if uploaded is None:
     st.info("بترفع CSV من ماجينتو وبيظهر الداشبورد فوراً")
     st.stop()
 
-df = process(uploaded)
+df_full = process(uploaded)
+all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
+all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
+
+# ── DATE RANGE FILTER ────────────────────────────────────────────────────────
+st.markdown("# 📊 Raneen Sales Dashboard")
+st.markdown("---")
+
+col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
+with col_dr1:
+    date_from = st.selectbox("من يوم", options=all_days, index=0, key="date_from")
+with col_dr2:
+    # Filter options to only days >= date_from
+    from_idx = all_days.index(date_from)
+    days_to_options = all_days[from_idx:]
+    date_to = st.selectbox("إلى يوم", options=days_to_options, index=len(days_to_options)-1, key="date_to")
+with col_dr3:
+    st.markdown("")
+    st.markdown("")
+    n_days_selected = all_days.index(date_to) - all_days.index(date_from) + 1
+    st.info(f"📅 **{date_from}  →  {date_to}**  ·  {n_days_selected} يوم")
+
+st.markdown("---")
+
+# Filter dataframe based on selected date range
+days_range = all_days[all_days.index(date_from): all_days.index(date_to)+1]
+df = df_full[df_full["Day"].isin(days_range)].copy()
+
 date_min = df["Purchase Date"].dt.date.min()
 date_max = df["Purchase Date"].dt.date.max()
 
@@ -107,12 +134,7 @@ aov_total  = total  / total_orders  if total_orders  else 0
 aov_raneen = raneen / raneen_orders if raneen_orders else 0
 aov_mp     = mp     / mp_orders     if mp_orders     else 0
 
-days_sorted = sorted(df["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
-
-# ── HEADER ───────────────────────────────────────────────────────────────────
-st.markdown(f"# 📊 Raneen Sales Dashboard")
-st.markdown(f"**الفترة:** {date_min} → {date_max}")
-st.markdown("---")
+days_sorted = days_range
 
 # ── METRICS ROW 1: Sales ──────────────────────────────────────────────────────
 st.markdown('<p class="section-title">المبيعات الإجمالية</p>', unsafe_allow_html=True)
@@ -143,29 +165,63 @@ with c9:
     st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">قطع MP</p><p class="metric-value" style="color:#d85a30">{mp_qty:,}</p><p class="metric-sub">{mp_qty/total_qty*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
 
 # ── RANEEN VS MP ──────────────────────────────────────────────────────────────
-st.markdown('<p class="section-title">Raneen vs MP</p>', unsafe_allow_html=True)
-col_l, col_r = st.columns([1,2])
+st.markdown('<p class="section-title">Raneen vs MP — مبيعات يومية</p>', unsafe_allow_html=True)
 
-with col_l:
-    fig_donut = go.Figure(go.Pie(
-        labels=["Raneen","MP"], values=[raneen,mp],
-        hole=.65, marker_colors=["#3266ad","#d85a30"],
-        textinfo="label+percent", hovertemplate="%{label}: %{value:,.0f} ج<extra></extra>"
-    ))
-    fig_donut.update_layout(margin=dict(t=20,b=20,l=20,r=20), height=260,
-        showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-    st.plotly_chart(fig_donut, use_container_width=True)
+daily_r   = df[df["Marketplace Seller"]=="raneen"].groupby("Day")["Value After Discounts"].sum()
+daily_mp  = df[df["Marketplace Seller"]=="MP"].groupby("Day")["Value After Discounts"].sum()
+daily_tot = df.groupby("Day")["Value After Discounts"].sum()
 
-with col_r:
-    ch_df = df.groupby("Marketplace Seller")["Value After Discounts"].sum().reset_index()
-    fig_bar = px.bar(ch_df, x="Marketplace Seller", y="Value After Discounts",
-        color="Marketplace Seller", color_discrete_map=COLORS,
-        text_auto=".3s")
-    fig_bar.update_layout(showlegend=False, margin=dict(t=20,b=20,l=10,r=10),
-        height=260, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        xaxis_title="", yaxis_title="")
-    fig_bar.update_traces(textposition="outside")
-    st.plotly_chart(fig_bar, use_container_width=True)
+r_vals   = [daily_r.get(d, 0)  for d in days_sorted]
+mp_vals  = [daily_mp.get(d, 0) for d in days_sorted]
+tot_vals = [daily_tot.get(d, 0) for d in days_sorted]
+
+fig_ts = go.Figure()
+fig_ts.add_trace(go.Scatter(
+    x=days_sorted, y=r_vals, name="Raneen",
+    mode="lines+markers", line=dict(color="#3266ad", width=2.5),
+    marker=dict(size=6),
+    hovertemplate="<b>%{x}</b><br>Raneen: %{y:,.0f} ج<extra></extra>"
+))
+fig_ts.add_trace(go.Scatter(
+    x=days_sorted, y=mp_vals, name="MP",
+    mode="lines+markers", line=dict(color="#d85a30", width=2.5),
+    marker=dict(size=6),
+    hovertemplate="<b>%{x}</b><br>MP: %{y:,.0f} ج<extra></extra>"
+))
+fig_ts.add_trace(go.Scatter(
+    x=days_sorted, y=tot_vals, name="الإجمالي",
+    mode="lines+markers", line=dict(color="#2a9e75", width=2, dash="dot"),
+    marker=dict(size=5),
+    hovertemplate="<b>%{x}</b><br>الإجمالي: %{y:,.0f} ج<extra></extra>"
+))
+
+# Add percentage annotations on hover
+for i, day in enumerate(days_sorted):
+    tot = tot_vals[i]
+    if tot > 0:
+        r_pct = r_vals[i] / tot * 100
+        mp_pct = mp_vals[i] / tot * 100
+
+fig_ts.update_layout(
+    height=320,
+    margin=dict(t=20, b=20, l=10, r=10),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+    yaxis=dict(tickformat=",.0f", gridcolor="rgba(128,128,128,0.1)"),
+    xaxis=dict(showgrid=False),
+    hovermode="x unified"
+)
+st.plotly_chart(fig_ts, use_container_width=True)
+
+# Summary row below chart
+col_ts1, col_ts2, col_ts3 = st.columns(3)
+with col_ts1:
+    st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي الفترة</p><p class="metric-value">{total/1e6:.2f}M ج</p><p class="metric-sub">{total_orders:,} أوردر</p></div>', unsafe_allow_html=True)
+with col_ts2:
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">Raneen</p><p class="metric-value" style="color:#3266ad">{raneen/1e6:.2f}M ج</p><p class="metric-sub">{raneen/total*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
+with col_ts3:
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">MP</p><p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p><p class="metric-sub">{mp/total*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
 
 # ── BY CATEGORY ───────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">مبيعات كل قسم — Raneen vs MP</p>', unsafe_allow_html=True)
@@ -328,8 +384,10 @@ df_orig["Seller"] = df_orig["Marketplace Seller"].apply(
 )
 
 df_mp2 = df_orig[df_orig["Seller"] != "raneen"].copy()
-total_days_n = len(days_sorted)
-last_day = days_sorted[-1]
+# Sellers always show full period heatmap (all days in sheet)
+all_days_full = sorted(df_orig["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
+total_days_n = len(all_days_full)
+last_day = all_days_full[-1]
 
 # Seller summary
 seller_summary = df_mp2.groupby("Seller").agg(
@@ -347,13 +405,13 @@ def seller_stats(seller):
     sd = seller_daily_raw[seller_daily_raw["Seller"]==seller]
     active = sd["Day"].tolist()
     if not active: return None
-    active_sorted = sorted(active, key=lambda d: days_sorted.index(d) if d in days_sorted else 0)
+    active_sorted = sorted(active, key=lambda d: all_days_full.index(d) if d in all_days_full else 0)
     last = active_sorted[-1]
     first = active_sorted[0]
-    last_idx = days_sorted.index(last) if last in days_sorted else 0
+    last_idx = all_days_full.index(last) if last in all_days_full else 0
     gap = (total_days_n - 1) - last_idx
-    first3 = days_sorted[:3]
-    last3 = days_sorted[-3:]
+    first3 = all_days_full[:3]
+    last3 = all_days_full[-3:]
     rev_map = dict(zip(sd["Day"], sd["Value After Discounts"]))
     a_first3 = sum(1 for d in first3 if d in rev_map and rev_map[d]>0)
     a_last3 = sum(1 for d in last3 if d in rev_map and rev_map[d]>0)
@@ -362,7 +420,7 @@ def seller_stats(seller):
     elif gap <= 3: status = "توقف 2-3 أيام"
     else: status = "توقف فترة"
     warn = a_first3 >= 2 and a_last3 == 0
-    daily = [round(rev_map.get(d, 0)) for d in days_sorted]
+    daily = [round(rev_map.get(d, 0)) for d in all_days_full]
     return {"first":first,"last":last,"gap":gap,"status":status,"warn":warn,"daily":daily}
 
 stats_list = []
@@ -412,7 +470,7 @@ if not warn_df.empty:
     for _, r in warn_df.head(20).iterrows():
         sc = status_colors.get(r["status"],"#888")
         sb = status_bg.get(r["status"],"#f5f5f5")
-        hm = make_heatmap(r["daily"], days_sorted)
+        hm = make_heatmap(r["daily"], all_days_full)
         warn_html += f'<tr style="border-bottom:.5px solid #f0f0f0"><td style="padding:5px 8px;font-weight:500">⚠️ {r["Seller"]}</td><td style="text-align:right;padding:5px 8px">{r["total_revenue"]:,.0f}</td><td style="padding:5px 8px">{r["first"]}</td><td style="padding:5px 8px">{r["last"]}</td><td style="text-align:right;padding:5px 8px;color:#d85a30;font-weight:500">{r["gap"]}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r["status"]}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
     warn_html += '</table>'
     st.markdown(warn_html, unsafe_allow_html=True)
@@ -438,7 +496,7 @@ table_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:le
 for i, r in enumerate(disp.itertuples(), 1):
     sc = status_colors.get(r.status, "#888")
     sb = status_bg.get(r.status, "#f5f5f5")
-    hm = make_heatmap(r.daily, days_sorted)
+    hm = make_heatmap(r.daily, all_days_full)
     gap_color = "#d85a30" if r.gap>3 else "#ba7517" if r.gap>0 else "#2a9e75"
     warn_icon = " ⚠️" if r.warn else ""
     table_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}{warn_icon}</td><td style="text-align:right;padding:5px 8px">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="text-align:right;padding:5px 8px;color:{gap_color};font-weight:500">{r.gap}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
