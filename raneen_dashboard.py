@@ -387,28 +387,11 @@ with col2:
 # ── SELLERS ANALYSIS ──────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">تحليل الـ Marketplace Sellers</p>', unsafe_allow_html=True)
 
-# Build seller data
-df_sellers = df.copy()
-df_sellers["Seller"] = df_sellers["Marketplace Seller"].apply(
-    lambda x: "raneen" if x == "raneen" else str(x).strip() if pd.notna(x) and str(x).strip() != "" else "raneen"
-)
-# Use raw Marketplace Seller column for actual seller names
-df_raw = pd.read_csv(uploaded) if hasattr(uploaded, "name") else None
-
-# Re-derive actual seller names from original column
-df_mp = df[df["Marketplace Seller"] == "MP"].copy()
-df_mp["Seller"] = df_mp["Marketplace Seller"]
-
-# Actually get seller names properly
-uploaded.seek(0)
-df_orig = pd.read_csv(uploaded)
-df_orig = df_orig[df_orig["Purchase Point"].str.contains("Raneen", na=False)].copy()
-df_orig = df_orig[~df_orig["Order Status"].isin(["Canceled","Failed Payment"])].copy()
-for col in ["Row Total","Discount Amount"]:
-    df_orig[col] = clean_money(df_orig[col])
-df_orig["Value After Discounts"] = df_orig["Row Total"] - df_orig["Discount Amount"]
-df_orig["Purchase Date"] = pd.to_datetime(df_orig["Purchase Date"], format="%b %d, %Y, %I:%M:%S %p", errors="coerce")
-df_orig["Day"] = df_orig["Purchase Date"].dt.strftime("%b %d")
+# Re-derive actual seller names using df_full (works for both uploaded and default)
+df_orig = df_full.copy()
+df_orig["Purchase Date"] = pd.to_datetime(df_orig["Purchase Date"], errors="coerce")
+if "Day" not in df_orig.columns:
+    df_orig["Day"] = df_orig["Purchase Date"].dt.strftime("%b %d")
 df_orig["Seller"] = df_orig["Marketplace Seller"].apply(
     lambda x: "raneen" if pd.isna(x) or str(x).strip() == "" else str(x).strip()
 )
