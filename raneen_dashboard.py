@@ -387,14 +387,39 @@ with col2:
 # ── SELLERS ANALYSIS ──────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">تحليل الـ Marketplace Sellers</p>', unsafe_allow_html=True)
 
-# Re-derive actual seller names using df_full (works for both uploaded and default)
+# Build seller-level data using raw seller names from df_full
+# df_full has Marketplace Seller already as raw name (before process() converts to MP/raneen)
+# So we re-read from df_full which has the original column intact for default data
+# For uploaded files, we use the processed df which has Marketplace Seller = MP or raneen
+# Solution: store raw seller name in df_full before process() overwrites it
+
+# Use df_full which has original Marketplace Seller values (raw names)
 df_orig = df_full.copy()
 df_orig["Purchase Date"] = pd.to_datetime(df_orig["Purchase Date"], errors="coerce")
 if "Day" not in df_orig.columns:
     df_orig["Day"] = df_orig["Purchase Date"].dt.strftime("%b %d")
+
+# Get real seller name: empty/nan = raneen, anything else = actual seller name
 df_orig["Seller"] = df_orig["Marketplace Seller"].apply(
-    lambda x: "raneen" if pd.isna(x) or str(x).strip() == "" else str(x).strip()
+    lambda x: "raneen" if pd.isna(x) or str(x).strip() in ["", "raneen", "MP"] else str(x).strip()
 )
+
+# If Marketplace Seller column only has MP/raneen (uploaded file case), 
+# we need to get actual names from the original uploaded file
+if uploaded is not None and set(df_orig["Marketplace Seller"].dropna().unique()).issubset({"MP","raneen"}):
+    uploaded.seek(0)
+    df_raw_upload = pd.read_csv(uploaded)
+    df_raw_upload = df_raw_upload[df_raw_upload["Purchase Point"].str.contains("Raneen", na=False)].copy()
+    df_raw_upload = df_raw_upload[~df_raw_upload["Order Status"].isin(["Canceled","Failed Payment"])].copy()
+    df_raw_upload["Purchase Date"] = pd.to_datetime(df_raw_upload["Purchase Date"], format="%b %d, %Y, %I:%M:%S %p", errors="coerce")
+    df_raw_upload["Day"] = df_raw_upload["Purchase Date"].dt.strftime("%b %d")
+    for col in ["Row Total","Discount Amount"]:
+        df_raw_upload[col] = clean_money(df_raw_upload[col])
+    df_raw_upload["Value After Discounts"] = df_raw_upload["Row Total"] - df_raw_upload["Discount Amount"]
+    df_raw_upload["Seller"] = df_raw_upload["Marketplace Seller"].apply(
+        lambda x: "raneen" if pd.isna(x) or str(x).strip() == "" else str(x).strip()
+    )
+    df_orig = df_raw_upload
 
 df_mp2 = df_orig[df_orig["Seller"] != "raneen"].copy()
 # Sellers always show full period heatmap (all days in sheet)
@@ -490,13 +515,25 @@ if not warn_df.empty:
 
 # Full sellers table with filters
 st.markdown("**كل الـ Sellers**")
-col_sf1, col_sf2 = st.columns([2,1])
+# Add category column to stats_df
+cat_by_seller = df_orig[df_orig["Seller"]!="raneen"].groupby("Seller")["Attribute Set"].agg(lambda x: x.value_counts().index[0] if len(x)>0 else "").reset_index()
+cat_by_seller.columns = ["Seller","top_category"]
+if "top_category" not in stats_df.columns:
+    stats_df = stats_df.merge(cat_by_seller, on="Seller", how="left")
+    stats_df["top_category"] = stats_df["top_category"].fillna("")
+
+col_sf1, col_sf2, col_sf3 = st.columns([2,2,1])
 with col_sf1:
     seller_search = st.text_input("ابحث باسم seller", placeholder="مثال: goldena", label_visibility="collapsed")
 with col_sf2:
-    status_filter = st.selectbox("فلتر الحالة", ["كل الحالات","نشط","توقف مؤخراً","توقف 2-3 أيام","توقف فترة"], label_visibility="collapsed")
+    all_cats_sel = ["كل الأقسام"] + sorted(stats_df["top_category"].unique().tolist())
+    cat_filter = st.selectbox("فلتر بالقسم", all_cats_sel, label_visibility="collapsed", key="sel_cat")
+with col_sf3:
+    status_filter = st.selectbox("الحالة", ["كل الحالات","نشط","توقف مؤخراً","توقف 2-3 أيام","توقف فترة"], label_visibility="collapsed")
 
 disp = stats_df.copy()
+if cat_filter != "كل الأقسام":
+    disp = disp[disp["top_category"]==cat_filter]
 if seller_search:
     disp = disp[disp["Seller"].str.lower().str.contains(seller_search.lower())]
 if status_filter != "كل الحالات":
@@ -505,14 +542,15 @@ if status_filter != "كل الحالات":
 st.caption(f"عرض {len(disp)} من {len(stats_df)} seller")
 
 table_html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
-table_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">#</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات (ج)</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الكمية</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الأوردرات</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">أيام توقف</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
+table_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">#</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">القسم</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات (ج)</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الكمية</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الأوردرات</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">أيام توقف</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
 for i, r in enumerate(disp.itertuples(), 1):
     sc = status_colors.get(r.status, "#888")
     sb = status_bg.get(r.status, "#f5f5f5")
     hm = make_heatmap(r.daily, all_days_full)
     gap_color = "#d85a30" if r.gap>3 else "#ba7517" if r.gap>0 else "#2a9e75"
     warn_icon = " ⚠️" if r.warn else ""
-    table_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}{warn_icon}</td><td style="text-align:right;padding:5px 8px">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="text-align:right;padding:5px 8px;color:{gap_color};font-weight:500">{r.gap}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
+    cat_badge = f'<span style="font-size:10px;background:#e6f1fb;color:#0c447c;padding:1px 5px;border-radius:4px">{r.top_category}</span>' if hasattr(r, "top_category") and r.top_category else ""
+    table_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}{warn_icon}</td><td style="padding:5px 8px">{cat_badge}</td><td style="text-align:right;padding:5px 8px">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="text-align:right;padding:5px 8px;color:{gap_color};font-weight:500">{r.gap}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
 table_html += '</table>'
 st.markdown(table_html, unsafe_allow_html=True)
 
