@@ -85,7 +85,13 @@ def load_default():
 with st.sidebar:
     st.markdown("## 📊 Raneen Analytics")
     st.markdown("---")
-    uploaded = st.file_uploader("ارفع شيت ماجينتو (CSV)", type=["csv"])
+    st.markdown("""
+    <div style="background:#d85a30;border-radius:10px;padding:.9rem 1rem;text-align:center;margin-bottom:.75rem">
+      <p style="color:white;font-size:14px;font-weight:700;margin:0 0 4px">⬆️ أضف الشيت المحدَّث هنا</p>
+      <p style="color:rgba(255,255,255,.8);font-size:11px;margin:0">لتحديث بيانات الداشبورد</p>
+    </div>
+    """, unsafe_allow_html=True)
+    uploaded = st.file_uploader("", type=["csv"], label_visibility="collapsed")
     st.markdown("---")
     st.markdown("**كيفية الاستخدام:**")
     st.markdown("1. نزّل الشيت من ماجينتو\n2. ارفعه هنا\n3. الداشبورد بيظهر فوراً")
@@ -125,6 +131,7 @@ all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
 
 # ── DATE RANGE FILTER ────────────────────────────────────────────────────────
 st.markdown("# 📊 Raneen Sales Dashboard")
+st.markdown('<p style="color:#aaa;font-size:12px;margin-top:-12px">Created by / Ahmed Khamis</p>', unsafe_allow_html=True)
 st.markdown("---")
 
 col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
@@ -489,27 +496,15 @@ if not warn_df.empty:
     warn_html += '</table>'
     st.markdown(warn_html, unsafe_allow_html=True)
 
-# Full sellers table with filters
+# Full sellers table - simple search only
 st.markdown("**كل الـ Sellers**")
-# Add category column to stats_df
-cat_by_seller = df_mp2.groupby("Seller")["Attribute Set"].agg(lambda x: x.value_counts().index[0] if len(x)>0 else "").reset_index()
-cat_by_seller.columns = ["Seller","top_category"]
-if "top_category" not in stats_df.columns:
-    stats_df = stats_df.merge(cat_by_seller, on="Seller", how="left")
-    stats_df["top_category"] = stats_df["top_category"].fillna("")
-
-col_sf1, col_sf2, col_sf3 = st.columns([2,2,1])
+col_sf1, col_sf2 = st.columns([3,1])
 with col_sf1:
     seller_search = st.text_input("ابحث باسم seller", placeholder="مثال: goldena", label_visibility="collapsed")
 with col_sf2:
-    all_cats_sel = ["كل الأقسام"] + sorted(stats_df["top_category"].unique().tolist())
-    cat_filter = st.selectbox("فلتر بالقسم", all_cats_sel, label_visibility="collapsed", key="sel_cat")
-with col_sf3:
     status_filter = st.selectbox("الحالة", ["كل الحالات","نشط","توقف مؤخراً","توقف 2-3 أيام","توقف فترة"], label_visibility="collapsed")
 
 disp = stats_df.copy()
-if cat_filter != "كل الأقسام":
-    disp = disp[disp["top_category"]==cat_filter]
 if seller_search:
     disp = disp[disp["Seller"].str.lower().str.contains(seller_search.lower())]
 if status_filter != "كل الحالات":
@@ -518,15 +513,14 @@ if status_filter != "كل الحالات":
 st.caption(f"عرض {len(disp)} من {len(stats_df)} seller")
 
 table_html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
-table_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">#</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">القسم</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات (ج)</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الكمية</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الأوردرات</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">أيام توقف</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
+table_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">#</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات (ج)</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الكمية</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الأوردرات</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">أيام توقف</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
 for i, r in enumerate(disp.itertuples(), 1):
     sc = status_colors.get(r.status, "#888")
     sb = status_bg.get(r.status, "#f5f5f5")
     hm = make_heatmap(r.daily, all_days_full)
     gap_color = "#d85a30" if r.gap>3 else "#ba7517" if r.gap>0 else "#2a9e75"
     warn_icon = " ⚠️" if r.warn else ""
-    cat_badge = f'<span style="font-size:10px;background:#e6f1fb;color:#0c447c;padding:1px 5px;border-radius:4px">{r.top_category}</span>' if hasattr(r, "top_category") and r.top_category else ""
-    table_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}{warn_icon}</td><td style="padding:5px 8px">{cat_badge}</td><td style="text-align:right;padding:5px 8px">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="text-align:right;padding:5px 8px;color:{gap_color};font-weight:500">{r.gap}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
+    table_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}{warn_icon}</td><td style="text-align:right;padding:5px 8px">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="text-align:right;padding:5px 8px;color:{gap_color};font-weight:500">{r.gap}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
 table_html += '</table>'
 st.markdown(table_html, unsafe_allow_html=True)
 
