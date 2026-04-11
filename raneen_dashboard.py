@@ -91,6 +91,19 @@ with st.sidebar:
       <p style="color:rgba(255,255,255,.85);font-size:11px;margin:0">CSV من ماجينتو ← الداشبورد يتحدث فوراً</p>
     </div>
     """, unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    [data-testid="stFileUploader"] {
+        border: 2px dashed #d85a30 !important;
+        border-radius: 8px !important;
+        background: rgba(216,90,48,.06) !important;
+    }
+    [data-testid="stFileUploader"] label { color: #d85a30 !important; font-weight: 600 !important; }
+    [data-testid="stFileUploaderDropzone"] { background: transparent !important; }
+    [data-testid="stFileUploaderDropzoneInstructions"] svg { fill: #d85a30 !important; }
+    [data-testid="stFileUploaderDropzoneInstructions"] span { color: #d85a30 !important; font-weight:600 !important; }
+    </style>
+    """, unsafe_allow_html=True)
     uploaded = st.file_uploader("", type=["csv"], label_visibility="collapsed")
     st.markdown("---")
     st.markdown("**كيفية الاستخدام:**")
@@ -304,15 +317,43 @@ fig_cat.update_layout(barmode="group", height=max(320, len(chart_data)*38),
     legend=dict(orientation="h", yanchor="bottom", y=1.02), xaxis=dict(tickformat=",.0f"))
 st.plotly_chart(fig_cat, use_container_width=True)
 
-cat_display = cat_ch[["Attribute Set","Channel","raneen","MP","Total"]].copy()
-cat_display["Raneen %"] = (cat_ch["raneen"]/cat_ch["Total"]*100).round(1).astype(str)+"%"
-cat_display["MP %"]     = (cat_ch["MP"]    /cat_ch["Total"]*100).round(1).astype(str)+"%"
-cat_display["raneen"]   = cat_display["raneen"].apply(lambda v: f"{v:,.0f}")
-cat_display["MP"]       = cat_display["MP"].apply(lambda v: f"{v:,.0f}")
-cat_display["Total"]    = cat_display["Total"].apply(lambda v: f"{v:,.0f}")
-cat_display.index = range(1, len(cat_display)+1)
-st.dataframe(cat_display.rename(columns={"Attribute Set":"القسم","raneen":"Raneen","Total":"الإجمالي"}),
-    use_container_width=True)
+# Category table with heatmap bars
+max_total = cat_ch["Total"].max() if len(cat_ch) > 0 else 1
+cat_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
+<tr style='border-bottom:1.5px solid #e0e0e0'>
+<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>#</th>
+<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>القسم</th>
+<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>Channel</th>
+<th style='padding:7px 8px;text-align:right;color:#3266ad;font-size:11px'>Raneen (ج)</th>
+<th style='padding:7px 8px;text-align:right;color:#d85a30;font-size:11px'>MP (ج)</th>
+<th style='padding:7px 8px;text-align:right;color:#555;font-size:11px'>الإجمالي (ج)</th>
+<th style='padding:7px 8px;color:#555;font-size:11px;min-width:160px'>Raneen vs MP</th>
+</tr>"""
+for i, (_, row) in enumerate(cat_ch.iterrows(), 1):
+    tot = row["Total"] if row["Total"] > 0 else 1
+    r_pct = row["raneen"] / tot * 100
+    m_pct = row["MP"] / tot * 100
+    bar_w = row["Total"] / max_total * 100
+    ch = row["Channel"]
+    ch_color = "#3266ad" if ch=="Raneen Only" else "#d85a30" if ch=="MP Only" else "#2a9e75"
+    ch_bg    = "#e6f1fb" if ch=="Raneen Only" else "#fcebeb" if ch=="MP Only" else "#e1f5ee"
+    # Split bar: raneen blue, mp orange
+    split_bar = f"""<div style='display:flex;height:8px;border-radius:4px;overflow:hidden;width:{bar_w:.0f}%;min-width:4px'>
+<div style='width:{r_pct:.0f}%;background:#3266ad'></div>
+<div style='width:{m_pct:.0f}%;background:#d85a30'></div>
+</div>
+<div style='font-size:10px;color:#aaa;margin-top:2px'>{r_pct:.0f}% Raneen · {m_pct:.0f}% MP</div>"""
+    cat_html += f"""<tr style='border-bottom:.5px solid #f0f0f0'>
+<td style='padding:6px 8px;color:#aaa'>{i}</td>
+<td style='padding:6px 8px;font-weight:{"500" if i<=5 else "400"}'>{row["Attribute Set"]}</td>
+<td style='padding:6px 8px'><span style='background:{ch_bg};color:{ch_color};font-size:10px;padding:1px 6px;border-radius:6px;font-weight:500'>{ch}</span></td>
+<td style='padding:6px 8px;text-align:right;color:#3266ad'>{row["raneen"]:,.0f}</td>
+<td style='padding:6px 8px;text-align:right;color:#d85a30'>{row["MP"]:,.0f}</td>
+<td style='padding:6px 8px;text-align:right;font-weight:500'>{row["Total"]:,.0f}</td>
+<td style='padding:6px 8px'>{split_bar}</td>
+</tr>"""
+cat_html += "</table>"
+st.markdown(cat_html, unsafe_allow_html=True)
 
 # ── PRICE CHANGES with category dropdown ──────────────────────────────────────
 st.markdown('<p class="section-title">المنتجات التي تغير سعرها أكثر من 3 مرات</p>', unsafe_allow_html=True)
@@ -326,12 +367,45 @@ if not pc.empty:
     pc_show = pc_show.sort_values(["# Changes","SKU"], ascending=[False,True])
     n_prods = pc_show["SKU"].nunique()
     st.caption(f"{n_prods} منتج · {len(pc_show)} تغيير")
+    # Build grouped HTML table - product name appears once, changes listed below
     pc_show = pc_show.copy()
-    pc_show["Change"] = pc_show["Change"].apply(lambda v: f"+{v:,.0f}" if v>0 else f"{v:,.0f}")
-    st.dataframe(pc_show[["Category","SKU","Product","Date","Price Before","Price After","Change","# Changes"]].rename(
-        columns={"Category":"القسم","Product":"المنتج","Date":"التاريخ",
-                 "Price Before":"قبل","Price After":"بعد","Change":"الفرق","# Changes":"# تغييرات"}
-    ), use_container_width=True, hide_index=True)
+    pc_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
+<tr style='border-bottom:1.5px solid #e0e0e0;background:var(--color-background-secondary,#f8f9fa)'>
+<th style='padding:7px 10px;text-align:left;color:#555;font-size:11px;width:30%'>المنتج</th>
+<th style='padding:7px 10px;text-align:left;color:#555;font-size:11px;width:12%'>التاريخ</th>
+<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>قبل (ج)</th>
+<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>بعد (ج)</th>
+<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>الفرق</th>
+<th style='padding:7px 10px;text-align:center;color:#555;font-size:11px'># تغييرات</th>
+</tr>"""
+    last_sku = None
+    for _, row in pc_show.iterrows():
+        is_new = row["SKU"] != last_sku
+        if is_new:
+            last_sku = row["SKU"]
+            n = int(row["# Changes"])
+            nbg = "#faeeda" if n>=7 else "#e1f5ee" if n>=6 else "#e6f1fb" if n>=5 else "#fcebeb" if n>=4 else "#f5f5f5"
+            nc  = "#633806" if n>=7 else "#085041" if n>=6 else "#0c447c" if n>=5 else "#501313" if n>=4 else "#555"
+            name_short = str(row["Product"])[:55] + ("..." if len(str(row["Product"]))>55 else "")
+            pc_html += f"""<tr style='border-top:2px solid #d0d0d0;background:#fafafa'>
+<td colspan='5' style='padding:7px 10px;font-weight:600;font-size:12px;color:#1F3864'>{name_short}<br>
+<span style='font-family:monospace;font-size:10px;color:#888'>{row["SKU"]}</span>
+<span style='font-size:10px;color:#888;margin-right:6px'>· {row["Category"]}</span></td>
+<td style='padding:7px 10px;text-align:center'><span style='background:{nbg};color:{nc};padding:2px 7px;border-radius:8px;font-size:11px;font-weight:600'>{n}x</span></td>
+</tr>"""
+        change_val = row["Change"]
+        chg_color = "#2a9e75" if change_val > 0 else "#d85a30"
+        chg_str   = f'+{change_val:,.0f}' if change_val > 0 else f'{change_val:,.0f}'
+        pc_html += f"""<tr style='border-bottom:.5px solid #eee'>
+<td style='padding:5px 10px;color:var(--color-text-tertiary,#aaa);font-size:11px;padding-right:20px'>↳</td>
+<td style='padding:5px 10px;color:#555'>{row["Date"]}</td>
+<td style='padding:5px 10px;text-align:right;color:#555'>{row["Price Before"]:,.0f}</td>
+<td style='padding:5px 10px;text-align:right;font-weight:500'>{row["Price After"]:,.0f}</td>
+<td style='padding:5px 10px;text-align:right;font-weight:600;color:{chg_color}'>{chg_str}</td>
+<td></td>
+</tr>"""
+    pc_html += "</table>"
+    st.markdown(pc_html, unsafe_allow_html=True)
 else:
     st.info("لا توجد منتجات بأكثر من 3 تغييرات في السعر")
 st.markdown('<p class="section-title">مبيعات يومية — أعلى 6 أقسام</p>', unsafe_allow_html=True)
