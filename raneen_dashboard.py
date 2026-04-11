@@ -86,9 +86,9 @@ with st.sidebar:
     st.markdown("## 📊 Raneen Analytics")
     st.markdown("---")
     st.markdown("""
-    <div style="background:#d85a30;border-radius:10px;padding:.9rem 1rem;text-align:center;margin-bottom:.75rem">
-      <p style="color:white;font-size:14px;font-weight:700;margin:0 0 4px">⬆️ أضف الشيت المحدَّث هنا</p>
-      <p style="color:rgba(255,255,255,.8);font-size:11px;margin:0">لتحديث بيانات الداشبورد</p>
+    <div style="background:linear-gradient(135deg,#d85a30,#e87a50);border-radius:10px;padding:1rem 1rem;text-align:center;margin-bottom:.75rem;box-shadow:0 3px 10px rgba(216,90,48,.35)">
+      <p style="color:white;font-size:15px;font-weight:800;margin:0 0 4px;letter-spacing:.02em">⬆️ أضف الشيت المحدَّث هنا</p>
+      <p style="color:rgba(255,255,255,.85);font-size:11px;margin:0">CSV من ماجينتو ← الداشبورد يتحدث فوراً</p>
     </div>
     """, unsafe_allow_html=True)
     uploaded = st.file_uploader("", type=["csv"], label_visibility="collapsed")
@@ -131,7 +131,7 @@ all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
 
 # ── DATE RANGE FILTER ────────────────────────────────────────────────────────
 st.markdown("# 📊 Raneen Sales Dashboard")
-st.markdown('<p style="color:#aaa;font-size:12px;margin-top:-12px">Created by / Ahmed Khamis</p>', unsafe_allow_html=True)
+st.markdown('<p style="color:#3266ad;font-size:16px;font-weight:600;margin-top:-10px;letter-spacing:.01em">✦ Created by / Ahmed Khamis</p>', unsafe_allow_html=True)
 st.markdown("---")
 
 col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
@@ -394,156 +394,6 @@ with col2:
     coup.index = range(1, len(coup)+1)
     st.dataframe(coup.rename(columns={"Coupon":"الكوبون","Total_Discount":"إجمالي الخصم","Orders":"الأوردرات"}),
         use_container_width=True)
-
-# ── SELLERS ANALYSIS ──────────────────────────────────────────────────────────
-st.markdown('<p class="section-title">تحليل الـ Marketplace Sellers</p>', unsafe_allow_html=True)
-
-# Build sellers df using df_full which has original Seller_Raw column
-df_s = df_full.copy()
-df_s["Purchase Date"] = pd.to_datetime(df_s["Purchase Date"], errors="coerce")
-if "Day" not in df_s.columns:
-    df_s["Day"] = df_s["Purchase Date"].dt.strftime("%b %d")
-# Seller_Raw: real seller name (saved in default CSV and added by process())
-if "Seller_Raw" not in df_s.columns:
-    # fallback: derive from Marketplace Seller raw values
-    df_s["Seller_Raw"] = df_s["Marketplace Seller"].apply(
-        lambda x: "raneen" if pd.isna(x) or str(x).strip() == "" else str(x).strip()
-    )
-# Filter only dates in selected range
-df_s = df_s[df_s["Day"].isin(days_sorted)]
-df_mp2 = df_s[df_s["Seller_Raw"] != "raneen"].copy()
-df_mp2["Seller"] = df_mp2["Seller_Raw"]
-# Sellers heatmap uses full sheet days (not filtered range)
-all_days_full = sorted(df_full["Day"].dropna().unique(), key=lambda d: pd.to_datetime(d+" 2026"))
-total_days_n = len(all_days_full)
-last_day = all_days_full[-1]
-
-# Seller summary
-seller_summary = df_mp2.groupby("Seller").agg(
-    total_revenue=("Value After Discounts","sum"),
-    total_qty=("Qty Ordered","sum"),
-    orders=("Order #","nunique"),
-    days_active=("Day","nunique")
-).sort_values("total_revenue", ascending=False).reset_index()
-
-# Daily per seller
-seller_daily_raw = df_mp2.groupby(["Seller","Day"])["Value After Discounts"].sum().reset_index()
-
-# Compute last sale, gap, status, warning
-def seller_stats(seller):
-    sd = seller_daily_raw[seller_daily_raw["Seller"]==seller]
-    active = sd["Day"].tolist()
-    if not active: return None
-    active_sorted = sorted(active, key=lambda d: all_days_full.index(d) if d in all_days_full else 0)
-    last = active_sorted[-1]
-    first = active_sorted[0]
-    last_idx = all_days_full.index(last) if last in all_days_full else 0
-    gap = (total_days_n - 1) - last_idx
-    first3 = all_days_full[:3]
-    last3 = all_days_full[-3:]
-    rev_map = dict(zip(sd["Day"], sd["Value After Discounts"]))
-    a_first3 = sum(1 for d in first3 if d in rev_map and rev_map[d]>0)
-    a_last3 = sum(1 for d in last3 if d in rev_map and rev_map[d]>0)
-    if gap == 0: status = "نشط"
-    elif gap == 1: status = "توقف مؤخراً"
-    elif gap <= 3: status = "توقف 2-3 أيام"
-    else: status = "توقف فترة"
-    warn = a_first3 >= 2 and a_last3 == 0
-    daily = [round(rev_map.get(d, 0)) for d in all_days_full]
-    return {"first":first,"last":last,"gap":gap,"status":status,"warn":warn,"daily":daily}
-
-stats_list = []
-for _, row in seller_summary.iterrows():
-    st_data = seller_stats(row["Seller"])
-    if st_data:
-        stats_list.append({**row.to_dict(), **st_data})
-
-stats_df = pd.DataFrame(stats_list)
-
-# Metrics
-n_active  = (stats_df["status"]=="نشط").sum()
-n_recent  = (stats_df["status"]=="توقف مؤخراً").sum()
-n_mid     = (stats_df["status"]=="توقف 2-3 أيام").sum()
-n_long    = (stats_df["status"]=="توقف فترة").sum()
-n_warn    = stats_df["warn"].sum()
-
-c1,c2,c3,c4,c5 = st.columns(5)
-with c1: st.markdown(f'<div class="metric-card" style="border-left:4px solid #2a9e75"><p class="metric-label">نشط (باع في آخر يوم)</p><p class="metric-value" style="color:#2a9e75">{n_active}</p><p class="metric-sub">seller</p></div>', unsafe_allow_html=True)
-with c2: st.markdown(f'<div class="metric-card" style="border-left:4px solid #ba7517"><p class="metric-label">توقف مؤخراً (يوم واحد)</p><p class="metric-value" style="color:#ba7517">{n_recent}</p><p class="metric-sub">seller</p></div>', unsafe_allow_html=True)
-with c3: st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">توقف 2–3 أيام</p><p class="metric-value" style="color:#d85a30">{n_mid}</p><p class="metric-sub">seller</p></div>', unsafe_allow_html=True)
-with c4: st.markdown(f'<div class="metric-card" style="border-left:4px solid #7f77dd"><p class="metric-label">توقف فترة (+4 أيام)</p><p class="metric-value" style="color:#7f77dd">{n_long}</p><p class="metric-sub">seller — محتمل نفاد مخزون</p></div>', unsafe_allow_html=True)
-with c5: st.markdown(f'<div class="metric-card" style="border-left:4px solid #e24b4a"><p class="metric-label">⚠️ تنبيه مخزون</p><p class="metric-value" style="color:#e24b4a">{n_warn}</p><p class="metric-sub">seller</p></div>', unsafe_allow_html=True)
-
-# Top 10 sellers by revenue
-st.markdown("**أعلى 10 Sellers مبيعاً**")
-top10 = stats_df.head(10).copy()
-top10_html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
-top10_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">#</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات (ج)</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الكمية</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الأوردرات</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
-for i, r in enumerate(top10.itertuples(), 1):
-    sc = status_colors.get(r.status, "#888")
-    sb = status_bg.get(r.status, "#f5f5f5")
-    hm = make_heatmap(r.daily, all_days_full)
-    top10_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}</td><td style="text-align:right;padding:5px 8px;font-weight:500">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
-top10_html += '</table>'
-st.markdown(top10_html, unsafe_allow_html=True)
-
-# Heatmap HTML helper
-def make_heatmap(daily, days):
-    mx = max(daily) if max(daily)>0 else 1
-    colors = ["#b5d4f4","#85b7eb","#378add","#185fa5","#3266ad"]
-    cells = ""
-    for v,d in zip(daily,days):
-        if v==0:
-            cells += f'<span title="{d}: 0 ج" style="display:inline-block;width:14px;height:14px;border-radius:2px;background:#e0e0e0;margin:1px"></span>'
-        else:
-            idx = min(int(v/mx*4), 4)
-            cells += f'<span title="{d}: {v:,.0f} ج" style="display:inline-block;width:14px;height:14px;border-radius:2px;background:{colors[idx]};margin:1px"></span>'
-    return cells
-
-status_colors = {"نشط":"#2a9e75","توقف مؤخراً":"#ba7517","توقف 2-3 أيام":"#d85a30","توقف فترة":"#7f77dd"}
-status_bg     = {"نشط":"#e1f5ee","توقف مؤخراً":"#faeeda","توقف 2-3 أيام":"#fcebeb","توقف فترة":"#eeedfe"}
-
-# Warning sellers table
-st.markdown("**⚠️ Sellers كانوا نشطين وتوقفوا فجأة — محتمل نفاد مخزون**")
-warn_df = stats_df[stats_df["warn"]==True].sort_values("total_revenue", ascending=False)
-if not warn_df.empty:
-    warn_html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
-    warn_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات</th><th style="padding:6px 8px;color:#888;font-size:11px">أول بيع</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">أيام توقف</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
-    for _, r in warn_df.head(20).iterrows():
-        sc = status_colors.get(r["status"],"#888")
-        sb = status_bg.get(r["status"],"#f5f5f5")
-        hm = make_heatmap(r["daily"], all_days_full)
-        warn_html += f'<tr style="border-bottom:.5px solid #f0f0f0"><td style="padding:5px 8px;font-weight:500">⚠️ {r["Seller"]}</td><td style="text-align:right;padding:5px 8px">{r["total_revenue"]:,.0f}</td><td style="padding:5px 8px">{r["first"]}</td><td style="padding:5px 8px">{r["last"]}</td><td style="text-align:right;padding:5px 8px;color:#d85a30;font-weight:500">{r["gap"]}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r["status"]}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
-    warn_html += '</table>'
-    st.markdown(warn_html, unsafe_allow_html=True)
-
-# Full sellers table - simple search only
-st.markdown("**كل الـ Sellers**")
-col_sf1, col_sf2 = st.columns([3,1])
-with col_sf1:
-    seller_search = st.text_input("ابحث باسم seller", placeholder="مثال: goldena", label_visibility="collapsed")
-with col_sf2:
-    status_filter = st.selectbox("الحالة", ["كل الحالات","نشط","توقف مؤخراً","توقف 2-3 أيام","توقف فترة"], label_visibility="collapsed")
-
-disp = stats_df.copy()
-if seller_search:
-    disp = disp[disp["Seller"].str.lower().str.contains(seller_search.lower())]
-if status_filter != "كل الحالات":
-    disp = disp[disp["status"]==status_filter]
-
-st.caption(f"عرض {len(disp)} من {len(stats_df)} seller")
-
-table_html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
-table_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">#</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات (ج)</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الكمية</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الأوردرات</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">أيام توقف</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
-for i, r in enumerate(disp.itertuples(), 1):
-    sc = status_colors.get(r.status, "#888")
-    sb = status_bg.get(r.status, "#f5f5f5")
-    hm = make_heatmap(r.daily, all_days_full)
-    gap_color = "#d85a30" if r.gap>3 else "#ba7517" if r.gap>0 else "#2a9e75"
-    warn_icon = " ⚠️" if r.warn else ""
-    table_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}{warn_icon}</td><td style="text-align:right;padding:5px 8px">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="text-align:right;padding:5px 8px;color:{gap_color};font-weight:500">{r.gap}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
-table_html += '</table>'
-st.markdown(table_html, unsafe_allow_html=True)
 
 # ── CUSTOMER REGION ───────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">مبيعات كل محافظة</p>', unsafe_allow_html=True)
