@@ -90,8 +90,22 @@ date_min = df["Purchase Date"].dt.date.min()
 date_max = df["Purchase Date"].dt.date.max()
 
 total   = df["Value After Discounts"].sum()
-raneen  = df[df["Marketplace Seller"]=="raneen"]["Value After Discounts"].sum()
-mp      = df[df["Marketplace Seller"]=="MP"]["Value After Discounts"].sum()
+df_r    = df[df["Marketplace Seller"]=="raneen"]
+df_mp   = df[df["Marketplace Seller"]=="MP"]
+raneen  = df_r["Value After Discounts"].sum()
+mp      = df_mp["Value After Discounts"].sum()
+
+total_orders  = df["Order #"].nunique()
+raneen_orders = df_r["Order #"].nunique()
+mp_orders     = df_mp["Order #"].nunique()
+
+total_qty  = df["Qty Ordered"].sum()
+raneen_qty = df_r["Qty Ordered"].sum()
+mp_qty     = df_mp["Qty Ordered"].sum()
+
+aov_total  = total  / total_orders  if total_orders  else 0
+aov_raneen = raneen / raneen_orders if raneen_orders else 0
+aov_mp     = mp     / mp_orders     if mp_orders     else 0
 
 days_sorted = sorted(df["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
 
@@ -100,17 +114,33 @@ st.markdown(f"# 📊 Raneen Sales Dashboard")
 st.markdown(f"**الفترة:** {date_min} → {date_max}")
 st.markdown("---")
 
-# ── METRICS ──────────────────────────────────────────────────────────────────
-c1,c2,c3,c4 = st.columns(4)
+# ── METRICS ROW 1: Sales ──────────────────────────────────────────────────────
+st.markdown('<p class="section-title">المبيعات الإجمالية</p>', unsafe_allow_html=True)
+c1,c2,c3 = st.columns(3)
 with c1:
-    st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي المبيعات</p><p class="metric-value">{total/1e6:.2f}M ج</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي المبيعات</p><p class="metric-value">{total/1e6:.2f}M ج</p><p class="metric-sub">{total_orders:,} أوردر</p></div>', unsafe_allow_html=True)
 with c2:
-    st.markdown(f'<div class="metric-card"><p class="metric-label">مبيعات Raneen</p><p class="metric-value">{raneen/1e6:.2f}M ج</p><p class="metric-sub">{raneen/total*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">مبيعات Raneen</p><p class="metric-value" style="color:#3266ad">{raneen/1e6:.2f}M ج</p><p class="metric-sub">{raneen/total*100:.1f}% · {raneen_orders:,} أوردر</p></div>', unsafe_allow_html=True)
 with c3:
-    st.markdown(f'<div class="metric-card"><p class="metric-label">مبيعات MP</p><p class="metric-value">{mp/1e6:.2f}M ج</p><p class="metric-sub">{mp/total*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">مبيعات MP</p><p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p><p class="metric-sub">{mp/total*100:.1f}% · {mp_orders:,} أوردر</p></div>', unsafe_allow_html=True)
+
+# ── METRICS ROW 2: AOV ────────────────────────────────────────────────────────
+c4,c5,c6 = st.columns(3)
 with c4:
-    n_cats = df["Attribute Set"].nunique()
-    st.markdown(f'<div class="metric-card"><p class="metric-label">عدد الأقسام</p><p class="metric-value">{n_cats}</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><p class="metric-label">AOV الإجمالي</p><p class="metric-value">{aov_total:,.0f} ج</p><p class="metric-sub">متوسط قيمة الأوردر</p></div>', unsafe_allow_html=True)
+with c5:
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">AOV — Raneen</p><p class="metric-value" style="color:#3266ad">{aov_raneen:,.0f} ج</p></div>', unsafe_allow_html=True)
+with c6:
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">AOV — MP</p><p class="metric-value" style="color:#d85a30">{aov_mp:,.0f} ج</p></div>', unsafe_allow_html=True)
+
+# ── METRICS ROW 3: Qty ────────────────────────────────────────────────────────
+c7,c8,c9 = st.columns(3)
+with c7:
+    st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي القطع المباعة</p><p class="metric-value">{total_qty:,}</p><p class="metric-sub">Qty Ordered</p></div>', unsafe_allow_html=True)
+with c8:
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">قطع Raneen</p><p class="metric-value" style="color:#3266ad">{raneen_qty:,}</p><p class="metric-sub">{raneen_qty/total_qty*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
+with c9:
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">قطع MP</p><p class="metric-value" style="color:#d85a30">{mp_qty:,}</p><p class="metric-sub">{mp_qty/total_qty*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
 
 # ── RANEEN VS MP ──────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">Raneen vs MP</p>', unsafe_allow_html=True)
@@ -187,7 +217,26 @@ cat_display.index = range(1, len(cat_display)+1)
 st.dataframe(cat_display.rename(columns={"Attribute Set":"القسم","raneen":"Raneen","Total":"الإجمالي"}),
     use_container_width=True)
 
-# ── DAILY ─────────────────────────────────────────────────────────────────────
+# ── PRICE CHANGES with category dropdown ──────────────────────────────────────
+st.markdown('<p class="section-title">المنتجات التي تغير سعرها أكثر من 3 مرات</p>', unsafe_allow_html=True)
+
+pc = get_price_changes(df)
+if not pc.empty:
+    pc["Category"] = pc["Category"].str.replace("&amp;","&")
+    cats_available = ["الكل"] + sorted(pc["Category"].unique().tolist())
+    selected_cat = st.selectbox("فلتر بالقسم", cats_available, key="pc_cat")
+    pc_show = pc if selected_cat=="الكل" else pc[pc["Category"]==selected_cat]
+    pc_show = pc_show.sort_values(["# Changes","SKU"], ascending=[False,True])
+    n_prods = pc_show["SKU"].nunique()
+    st.caption(f"{n_prods} منتج · {len(pc_show)} تغيير")
+    pc_show = pc_show.copy()
+    pc_show["Change"] = pc_show["Change"].apply(lambda v: f"+{v:,.0f}" if v>0 else f"{v:,.0f}")
+    st.dataframe(pc_show[["Category","SKU","Product","Date","Price Before","Price After","Change","# Changes"]].rename(
+        columns={"Category":"القسم","Product":"المنتج","Date":"التاريخ",
+                 "Price Before":"قبل","Price After":"بعد","Change":"الفرق","# Changes":"# تغييرات"}
+    ), use_container_width=True, hide_index=True)
+else:
+    st.info("لا توجد منتجات بأكثر من 3 تغييرات في السعر")
 st.markdown('<p class="section-title">مبيعات يومية — أعلى 6 أقسام</p>', unsafe_allow_html=True)
 
 top6_cats = df.groupby("Attribute Set")["Value After Discounts"].sum().nlargest(6).index.tolist()
@@ -216,26 +265,6 @@ top_prod["Revenue"] = top_prod["Revenue"].apply(lambda v: f"{v:,.0f} ج")
 top_prod.index = range(1, len(top_prod)+1)
 st.dataframe(top_prod.rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات","Days":"أيام ظهور"}),
     use_container_width=True)
-
-# ── PRICE CHANGES ─────────────────────────────────────────────────────────────
-st.markdown('<p class="section-title">المنتجات التي تغير سعرها أكثر من 3 مرات</p>', unsafe_allow_html=True)
-
-pc = get_price_changes(df)
-if not pc.empty:
-    cats_available = ["الكل"] + sorted(pc["Category"].str.replace("&amp;","&").unique().tolist())
-    selected_cat = st.selectbox("فلتر بالقسم", cats_available)
-    if selected_cat != "الكل":
-        pc_show = pc[pc["Category"].str.replace("&amp;","&")==selected_cat]
-    else:
-        pc_show = pc
-    pc_show = pc_show.sort_values(["# Changes","SKU"], ascending=[False,True])
-    pc_show["Change"] = pc_show["Change"].apply(lambda v: f"+{v:,.0f}" if v>0 else f"{v:,.0f}")
-    st.dataframe(pc_show[["Category","SKU","Product","Date","Price Before","Price After","Change","# Changes"]].rename(
-        columns={"Category":"القسم","Product":"المنتج","Date":"التاريخ",
-                 "Price Before":"قبل","Price After":"بعد","Change":"الفرق","# Changes":"# تغييرات"}
-    ), use_container_width=True, hide_index=True)
-else:
-    st.info("لا توجد منتجات بأكثر من 3 تغييرات في السعر")
 
 # ── COUPONS ───────────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">خصومات الكوبونات</p>', unsafe_allow_html=True)
@@ -268,6 +297,264 @@ with col2:
     coup.index = range(1, len(coup)+1)
     st.dataframe(coup.rename(columns={"Coupon":"الكوبون","Total_Discount":"إجمالي الخصم","Orders":"الأوردرات"}),
         use_container_width=True)
+
+# ── SELLERS ANALYSIS ──────────────────────────────────────────────────────────
+st.markdown('<p class="section-title">تحليل الـ Marketplace Sellers</p>', unsafe_allow_html=True)
+
+# Build seller data
+df_sellers = df.copy()
+df_sellers["Seller"] = df_sellers["Marketplace Seller"].apply(
+    lambda x: "raneen" if x == "raneen" else str(x).strip() if pd.notna(x) and str(x).strip() != "" else "raneen"
+)
+# Use raw Marketplace Seller column for actual seller names
+df_raw = pd.read_csv(uploaded) if hasattr(uploaded, "name") else None
+
+# Re-derive actual seller names from original column
+df_mp = df[df["Marketplace Seller"] == "MP"].copy()
+df_mp["Seller"] = df_mp["Marketplace Seller"]
+
+# Actually get seller names properly
+uploaded.seek(0)
+df_orig = pd.read_csv(uploaded)
+df_orig = df_orig[df_orig["Purchase Point"].str.contains("Raneen", na=False)].copy()
+df_orig = df_orig[~df_orig["Order Status"].isin(["Canceled","Failed Payment"])].copy()
+for col in ["Row Total","Discount Amount"]:
+    df_orig[col] = clean_money(df_orig[col])
+df_orig["Value After Discounts"] = df_orig["Row Total"] - df_orig["Discount Amount"]
+df_orig["Purchase Date"] = pd.to_datetime(df_orig["Purchase Date"], format="%b %d, %Y, %I:%M:%S %p", errors="coerce")
+df_orig["Day"] = df_orig["Purchase Date"].dt.strftime("%b %d")
+df_orig["Seller"] = df_orig["Marketplace Seller"].apply(
+    lambda x: "raneen" if pd.isna(x) or str(x).strip() == "" else str(x).strip()
+)
+
+df_mp2 = df_orig[df_orig["Seller"] != "raneen"].copy()
+total_days_n = len(days_sorted)
+last_day = days_sorted[-1]
+
+# Seller summary
+seller_summary = df_mp2.groupby("Seller").agg(
+    total_revenue=("Value After Discounts","sum"),
+    total_qty=("Qty Ordered","sum"),
+    orders=("Order #","nunique"),
+    days_active=("Day","nunique")
+).sort_values("total_revenue", ascending=False).reset_index()
+
+# Daily per seller
+seller_daily_raw = df_mp2.groupby(["Seller","Day"])["Value After Discounts"].sum().reset_index()
+
+# Compute last sale, gap, status, warning
+def seller_stats(seller):
+    sd = seller_daily_raw[seller_daily_raw["Seller"]==seller]
+    active = sd["Day"].tolist()
+    if not active: return None
+    active_sorted = sorted(active, key=lambda d: days_sorted.index(d) if d in days_sorted else 0)
+    last = active_sorted[-1]
+    first = active_sorted[0]
+    last_idx = days_sorted.index(last) if last in days_sorted else 0
+    gap = (total_days_n - 1) - last_idx
+    first3 = days_sorted[:3]
+    last3 = days_sorted[-3:]
+    rev_map = dict(zip(sd["Day"], sd["Value After Discounts"]))
+    a_first3 = sum(1 for d in first3 if d in rev_map and rev_map[d]>0)
+    a_last3 = sum(1 for d in last3 if d in rev_map and rev_map[d]>0)
+    if gap == 0: status = "نشط"
+    elif gap == 1: status = "توقف مؤخراً"
+    elif gap <= 3: status = "توقف 2-3 أيام"
+    else: status = "توقف فترة"
+    warn = a_first3 >= 2 and a_last3 == 0
+    daily = [round(rev_map.get(d, 0)) for d in days_sorted]
+    return {"first":first,"last":last,"gap":gap,"status":status,"warn":warn,"daily":daily}
+
+stats_list = []
+for _, row in seller_summary.iterrows():
+    st_data = seller_stats(row["Seller"])
+    if st_data:
+        stats_list.append({**row.to_dict(), **st_data})
+
+stats_df = pd.DataFrame(stats_list)
+
+# Metrics
+n_active  = (stats_df["status"]=="نشط").sum()
+n_recent  = (stats_df["status"]=="توقف مؤخراً").sum()
+n_mid     = (stats_df["status"]=="توقف 2-3 أيام").sum()
+n_long    = (stats_df["status"]=="توقف فترة").sum()
+n_warn    = stats_df["warn"].sum()
+
+c1,c2,c3,c4,c5 = st.columns(5)
+with c1: st.markdown(f'<div class="metric-card" style="border-left:4px solid #2a9e75"><p class="metric-label">نشط</p><p class="metric-value" style="color:#2a9e75">{n_active}</p></div>', unsafe_allow_html=True)
+with c2: st.markdown(f'<div class="metric-card" style="border-left:4px solid #ba7517"><p class="metric-label">توقف مؤخراً</p><p class="metric-value" style="color:#ba7517">{n_recent}</p></div>', unsafe_allow_html=True)
+with c3: st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">توقف 2-3 أيام</p><p class="metric-value" style="color:#d85a30">{n_mid}</p></div>', unsafe_allow_html=True)
+with c4: st.markdown(f'<div class="metric-card" style="border-left:4px solid #7f77dd"><p class="metric-label">توقف فترة</p><p class="metric-value" style="color:#7f77dd">{n_long}</p></div>', unsafe_allow_html=True)
+with c5: st.markdown(f'<div class="metric-card" style="border-left:4px solid #e24b4a"><p class="metric-label">⚠️ تنبيه مخزون</p><p class="metric-value" style="color:#e24b4a">{n_warn}</p></div>', unsafe_allow_html=True)
+
+# Heatmap HTML helper
+def make_heatmap(daily, days):
+    mx = max(daily) if max(daily)>0 else 1
+    colors = ["#b5d4f4","#85b7eb","#378add","#185fa5","#3266ad"]
+    cells = ""
+    for v,d in zip(daily,days):
+        if v==0:
+            cells += f'<span title="{d}: 0 ج" style="display:inline-block;width:14px;height:14px;border-radius:2px;background:#e0e0e0;margin:1px"></span>'
+        else:
+            idx = min(int(v/mx*4), 4)
+            cells += f'<span title="{d}: {v:,.0f} ج" style="display:inline-block;width:14px;height:14px;border-radius:2px;background:{colors[idx]};margin:1px"></span>'
+    return cells
+
+status_colors = {"نشط":"#2a9e75","توقف مؤخراً":"#ba7517","توقف 2-3 أيام":"#d85a30","توقف فترة":"#7f77dd"}
+status_bg     = {"نشط":"#e1f5ee","توقف مؤخراً":"#faeeda","توقف 2-3 أيام":"#fcebeb","توقف فترة":"#eeedfe"}
+
+# Warning sellers table
+st.markdown("**⚠️ Sellers كانوا نشطين وتوقفوا فجأة — محتمل نفاد مخزون**")
+warn_df = stats_df[stats_df["warn"]==True].sort_values("total_revenue", ascending=False)
+if not warn_df.empty:
+    warn_html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    warn_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات</th><th style="padding:6px 8px;color:#888;font-size:11px">أول بيع</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">أيام توقف</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
+    for _, r in warn_df.head(20).iterrows():
+        sc = status_colors.get(r["status"],"#888")
+        sb = status_bg.get(r["status"],"#f5f5f5")
+        hm = make_heatmap(r["daily"], days_sorted)
+        warn_html += f'<tr style="border-bottom:.5px solid #f0f0f0"><td style="padding:5px 8px;font-weight:500">⚠️ {r["Seller"]}</td><td style="text-align:right;padding:5px 8px">{r["total_revenue"]:,.0f}</td><td style="padding:5px 8px">{r["first"]}</td><td style="padding:5px 8px">{r["last"]}</td><td style="text-align:right;padding:5px 8px;color:#d85a30;font-weight:500">{r["gap"]}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r["status"]}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
+    warn_html += '</table>'
+    st.markdown(warn_html, unsafe_allow_html=True)
+
+# Full sellers table with filters
+st.markdown("**كل الـ Sellers**")
+col_sf1, col_sf2 = st.columns([2,1])
+with col_sf1:
+    seller_search = st.text_input("ابحث باسم seller", placeholder="مثال: goldena", label_visibility="collapsed")
+with col_sf2:
+    status_filter = st.selectbox("فلتر الحالة", ["كل الحالات","نشط","توقف مؤخراً","توقف 2-3 أيام","توقف فترة"], label_visibility="collapsed")
+
+disp = stats_df.copy()
+if seller_search:
+    disp = disp[disp["Seller"].str.lower().str.contains(seller_search.lower())]
+if status_filter != "كل الحالات":
+    disp = disp[disp["status"]==status_filter]
+
+st.caption(f"عرض {len(disp)} من {len(stats_df)} seller")
+
+table_html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+table_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">#</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات (ج)</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الكمية</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الأوردرات</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">أيام توقف</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
+for i, r in enumerate(disp.itertuples(), 1):
+    sc = status_colors.get(r.status, "#888")
+    sb = status_bg.get(r.status, "#f5f5f5")
+    hm = make_heatmap(r.daily, days_sorted)
+    gap_color = "#d85a30" if r.gap>3 else "#ba7517" if r.gap>0 else "#2a9e75"
+    warn_icon = " ⚠️" if r.warn else ""
+    table_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}{warn_icon}</td><td style="text-align:right;padding:5px 8px">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="text-align:right;padding:5px 8px;color:{gap_color};font-weight:500">{r.gap}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
+table_html += '</table>'
+st.markdown(table_html, unsafe_allow_html=True)
+
+# ── CUSTOMER REGION ───────────────────────────────────────────────────────────
+st.markdown('<p class="section-title">مبيعات كل محافظة</p>', unsafe_allow_html=True)
+
+region_map = {
+    'Cairo':'القاهرة','Giza':'الجيزة','Alexandria':'الأسكندرية',
+    'Qalyubia':'القليوبية','Al Sharqia':'الشرقية','Sohag':'سوهاج',
+    'Al Monufia':'المنوفية','Al Minufiya':'المنوفية','Al Beheira':'البحيرة',
+    'Al Daqahliya':'الدقهلية','Asyut':'أسيوط','Al Gharbia':'الغربية',
+    'Red Sea':'البحر الأحمر','Ismailia':'الأسماعيلية','Suez':'السويس',
+    'Al Fayoum':'الفيوم','Damietta':'دمياط','Qena':'قنا',
+    'Port Said':'بور سعيد','Al Meniya':'المنيا','Luxor':'الأقصر',
+    'Aswan':'أسوان','Bani Souaif':'بني سويف','Kafr El-Sheikh':'كفر الشيخ',
+    'North Coast':'الساحل الشمالي'
+}
+df_reg = df.copy()
+df_reg["Region"] = df_reg["Customer Region"].map(region_map).fillna(df_reg["Customer Region"])
+region_df = df_reg.groupby("Region").agg(
+    revenue=("Value After Discounts","sum"),
+    orders=("Order #","nunique"),
+    items=("Qty Ordered","sum")
+).sort_values("revenue",ascending=False).reset_index()
+region_df["pct"] = (region_df["revenue"]/region_df["revenue"].sum()*100).round(1)
+region_df["aov"] = (region_df["revenue"]/region_df["orders"]).round(0)
+
+REG_PAL = ["#3266ad","#185fa5","#378add","#85b7eb","#b5d4f4","#d85a30","#ba7517","#2a9e75","#0f6e56","#533ab7","#3c3489","#993556","#639922","#854f0b","#888780"]
+
+fig_reg = go.Figure()
+fig_reg.add_trace(go.Bar(
+    y=region_df["Region"], x=region_df["revenue"],
+    orientation="h",
+    marker_color=[REG_PAL[min(i,len(REG_PAL)-1)] for i in range(len(region_df))],
+    hovertemplate="%{y}: %{x:,.0f} ج<extra></extra>",
+    text=region_df["pct"].astype(str)+"%",
+    textposition="outside"
+))
+fig_reg.update_layout(
+    height=max(400, len(region_df)*22),
+    margin=dict(t=10,b=10,l=10,r=60),
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    xaxis=dict(tickformat=",.0f"),
+    yaxis=dict(ticks="", tickfont=dict(size=11)),
+    showlegend=False
+)
+st.plotly_chart(fig_reg, use_container_width=True)
+
+region_disp = region_df.copy()
+region_disp["revenue_fmt"] = region_disp["revenue"].apply(lambda v: f"{v:,.0f}")
+region_disp["aov_fmt"]     = region_disp["aov"].apply(lambda v: f"{v:,.0f}")
+region_disp["pct_fmt"]     = region_disp["pct"].astype(str)+"%"
+region_disp.index = range(1, len(region_disp)+1)
+st.dataframe(
+    region_disp[["Region","revenue_fmt","orders","items","aov_fmt","pct_fmt"]].rename(
+        columns={"Region":"المحافظة","revenue_fmt":"المبيعات (ج)","orders":"الأوردرات","items":"القطع","aov_fmt":"AOV (ج)","pct_fmt":"النسبة"}
+    ), use_container_width=True
+)
+
+# ── PAYMENT METHOD ─────────────────────────────────────────────────────────────
+st.markdown('<p class="section-title">طرق الدفع</p>', unsafe_allow_html=True)
+
+pay_df = df.groupby("Payment Method").agg(
+    revenue=("Value After Discounts","sum"),
+    orders=("Order #","nunique")
+).sort_values("revenue",ascending=False).reset_index()
+pay_df["pct"] = (pay_df["revenue"]/pay_df["revenue"].sum()*100).round(1)
+pay_df["aov"] = (pay_df["revenue"]/pay_df["orders"]).round(0)
+
+PAY_PAL = ["#3266ad","#d85a30","#2a9e75","#ba7517","#993556","#533ab7","#639922","#854f0b","#888780"]
+
+col_pay1, col_pay2 = st.columns([1,1])
+with col_pay1:
+    fig_pay_donut = go.Figure(go.Pie(
+        labels=pay_df["Payment Method"],
+        values=pay_df["revenue"],
+        hole=.6,
+        marker_colors=PAY_PAL,
+        textinfo="label+percent",
+        hovertemplate="%{label}: %{value:,.0f} ج (%{percent})<extra></extra>"
+    ))
+    fig_pay_donut.update_layout(
+        height=300, margin=dict(t=10,b=10,l=10,r=10),
+        paper_bgcolor="rgba(0,0,0,0)", showlegend=False
+    )
+    st.plotly_chart(fig_pay_donut, use_container_width=True)
+
+with col_pay2:
+    fig_pay_bar = px.bar(
+        pay_df, x="Payment Method", y="revenue",
+        color="Payment Method", color_discrete_sequence=PAY_PAL,
+        text=pay_df["pct"].astype(str)+"%"
+    )
+    fig_pay_bar.update_layout(
+        showlegend=False, height=300,
+        margin=dict(t=10,b=10,l=10,r=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(title="", tickfont=dict(size=9)),
+        yaxis=dict(title="", tickformat=",.0f")
+    )
+    fig_pay_bar.update_traces(textposition="outside")
+    st.plotly_chart(fig_pay_bar, use_container_width=True)
+
+pay_disp = pay_df.copy()
+pay_disp["revenue_fmt"] = pay_disp["revenue"].apply(lambda v: f"{v:,.0f}")
+pay_disp["aov_fmt"]     = pay_disp["aov"].apply(lambda v: f"{v:,.0f}")
+pay_disp["pct_fmt"]     = pay_disp["pct"].astype(str)+"%"
+pay_disp.index = range(1, len(pay_disp)+1)
+st.dataframe(
+    pay_disp[["Payment Method","revenue_fmt","orders","aov_fmt","pct_fmt"]].rename(
+        columns={"Payment Method":"طريقة الدفع","revenue_fmt":"المبيعات (ج)","orders":"الأوردرات","aov_fmt":"AOV (ج)","pct_fmt":"النسبة"}
+    ), use_container_width=True
+)
 
 st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:#aaa;font-size:11px'>Raneen Analytics · {date_min} → {date_max}</p>", unsafe_allow_html=True)
