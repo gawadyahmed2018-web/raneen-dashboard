@@ -43,6 +43,10 @@ def process(file):
     for col in ["Item Price","Discount Amount","Marketing Discount","Commercial Discount","Row Total"]:
         df[col] = clean_money(df[col])
     df["Value After Discounts"] = df["Row Total"] - df["Discount Amount"]
+    # Keep raw seller name before converting to MP/raneen
+    df["Seller_Raw"] = df["Marketplace Seller"].apply(
+        lambda x: "raneen" if pd.isna(x) or str(x).strip()=="" else str(x).strip()
+    )
     df["Marketplace Seller"] = df["Marketplace Seller"].apply(
         lambda x: "raneen" if pd.isna(x) or str(x).strip()==""  else "MP"
     )
@@ -387,43 +391,15 @@ with col2:
 # ── SELLERS ANALYSIS ──────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">تحليل الـ Marketplace Sellers</p>', unsafe_allow_html=True)
 
-# Build seller-level data using raw seller names from df_full
-# df_full has Marketplace Seller already as raw name (before process() converts to MP/raneen)
-# So we re-read from df_full which has the original column intact for default data
-# For uploaded files, we use the processed df which has Marketplace Seller = MP or raneen
-# Solution: store raw seller name in df_full before process() overwrites it
-
-# Use df_full which has original Marketplace Seller values (raw names)
-df_orig = df_full.copy()
-df_orig["Purchase Date"] = pd.to_datetime(df_orig["Purchase Date"], errors="coerce")
-if "Day" not in df_orig.columns:
-    df_orig["Day"] = df_orig["Purchase Date"].dt.strftime("%b %d")
-
-# Get real seller name: empty/nan = raneen, anything else = actual seller name
-df_orig["Seller"] = df_orig["Marketplace Seller"].apply(
-    lambda x: "raneen" if pd.isna(x) or str(x).strip() in ["", "raneen", "MP"] else str(x).strip()
-)
-
-# If Marketplace Seller column only has MP/raneen (uploaded file case), 
-# we need to get actual names from the original uploaded file
-if uploaded is not None and set(df_orig["Marketplace Seller"].dropna().unique()).issubset({"MP","raneen"}):
-    uploaded.seek(0)
-    df_raw_upload = pd.read_csv(uploaded)
-    df_raw_upload = df_raw_upload[df_raw_upload["Purchase Point"].str.contains("Raneen", na=False)].copy()
-    df_raw_upload = df_raw_upload[~df_raw_upload["Order Status"].isin(["Canceled","Failed Payment"])].copy()
-    df_raw_upload["Purchase Date"] = pd.to_datetime(df_raw_upload["Purchase Date"], format="%b %d, %Y, %I:%M:%S %p", errors="coerce")
-    df_raw_upload["Day"] = df_raw_upload["Purchase Date"].dt.strftime("%b %d")
-    for col in ["Row Total","Discount Amount"]:
-        df_raw_upload[col] = clean_money(df_raw_upload[col])
-    df_raw_upload["Value After Discounts"] = df_raw_upload["Row Total"] - df_raw_upload["Discount Amount"]
-    df_raw_upload["Seller"] = df_raw_upload["Marketplace Seller"].apply(
-        lambda x: "raneen" if pd.isna(x) or str(x).strip() == "" else str(x).strip()
-    )
-    df_orig = df_raw_upload
-
-df_mp2 = df_orig[df_orig["Seller"] != "raneen"].copy()
+# Use Seller_Raw column (real seller names) from df which comes from process()
+# For default data loaded from CSV, Seller_Raw is already stored in the file
+df_for_sellers = df.copy()
+if "Seller_Raw" not in df_for_sellers.columns:
+    df_for_sellers["Seller_Raw"] = df_for_sellers["Marketplace Seller"]
+df_mp2 = df_for_sellers[df_for_sellers["Seller_Raw"] != "raneen"].copy()
+df_mp2["Seller"] = df_mp2["Seller_Raw"]
 # Sellers always show full period heatmap (all days in sheet)
-all_days_full = sorted(df_orig["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
+all_days_full = sorted(df["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
 total_days_n = len(all_days_full)
 last_day = all_days_full[-1]
 
@@ -516,7 +492,7 @@ if not warn_df.empty:
 # Full sellers table with filters
 st.markdown("**كل الـ Sellers**")
 # Add category column to stats_df
-cat_by_seller = df_orig[df_orig["Seller"]!="raneen"].groupby("Seller")["Attribute Set"].agg(lambda x: x.value_counts().index[0] if len(x)>0 else "").reset_index()
+cat_by_seller = df_mp2.groupby("Seller")["Attribute Set"].agg(lambda x: x.value_counts().index[0] if len(x)>0 else "").reset_index()
 cat_by_seller.columns = ["Seller","top_category"]
 if "top_category" not in stats_df.columns:
     stats_df = stats_df.merge(cat_by_seller, on="Seller", how="left")
