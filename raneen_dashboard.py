@@ -319,7 +319,7 @@ st.plotly_chart(fig_cat, use_container_width=True)
 
 # Category table with heatmap bars
 max_total = cat_ch["Total"].max() if len(cat_ch) > 0 else 1
-cat_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
+cat_html = """<div style='max-height:520px;overflow-y:auto'><table style='width:100%;border-collapse:collapse;font-size:12px'>
 <tr style='border-bottom:1.5px solid #e0e0e0'>
 <th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>#</th>
 <th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>القسم</th>
@@ -352,7 +352,7 @@ for i, (_, row) in enumerate(cat_ch.iterrows(), 1):
 <td style='padding:6px 8px;text-align:right;font-weight:500'>{row["Total"]:,.0f}</td>
 <td style='padding:6px 8px'>{split_bar}</td>
 </tr>"""
-cat_html += "</table>"
+cat_html += "</table></div>"
 st.markdown(cat_html, unsafe_allow_html=True)
 
 # ── PRICE CHANGES with category dropdown ──────────────────────────────────────
@@ -424,18 +424,52 @@ fig_line.update_layout(height=320, margin=dict(t=10,b=10,l=10,r=10),
     yaxis=dict(tickformat=",.0f"), xaxis=dict(showgrid=False))
 st.plotly_chart(fig_line, use_container_width=True)
 
-# ── TOP PRODUCTS ──────────────────────────────────────────────────────────────
+# ── TOP PRODUCTS with heatbar ────────────────────────────────────────────────
 st.markdown('<p class="section-title">أعلى المنتجات طلبًا</p>', unsafe_allow_html=True)
 
 top_prod = df.groupby("Name").agg(
     Qty=("Qty Ordered","sum"),
     Revenue=("Value After Discounts","sum"),
     Days=("Day","nunique")
-).sort_values("Qty", ascending=False).head(15).reset_index()
-top_prod["Revenue"] = top_prod["Revenue"].apply(lambda v: f"{v:,.0f} ج")
-top_prod.index = range(1, len(top_prod)+1)
-st.dataframe(top_prod.rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات","Days":"أيام ظهور"}),
-    use_container_width=True)
+).sort_values("Qty", ascending=False).head(30).reset_index()
+
+max_qty_p = top_prod["Qty"].max()
+max_rev_p = top_prod["Revenue"].max()
+total_d = len(days_sorted)
+
+prod_rows = ""
+for idx_p, row_p in top_prod.iterrows():
+    qty_w = int(row_p["Qty"] / max_qty_p * 80) if max_qty_p > 0 else 0
+    rev_w = int(row_p["Revenue"] / max_rev_p * 80) if max_rev_p > 0 else 0
+    days_act = int(row_p["Days"])
+    heat_cells = "".join([
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin:1px;background:%s"></span>' % ("#3266ad" if j < days_act else "#e0e0e0")
+        for j in range(total_d)
+    ])
+    name_s = str(row_p["Name"])[:50] + ("..." if len(str(row_p["Name"])) > 50 else "")
+    prod_rows += (
+        '<tr style="border-bottom:.5px solid #f0f0f0">' +
+        '<td style="padding:5px 8px;color:#aaa">' + str(idx_p+1) + '</td>' +
+        '<td style="padding:5px 8px;max-width:220px" title="' + str(row_p["Name"]) + '">' + name_s + '</td>' +
+        '<td style="padding:5px 8px;text-align:right"><span style="font-weight:600">' + f'{int(row_p["Qty"]):,}' + '</span>' +
+        '<div style="background:#e8f0fb;border-radius:2px;height:4px;margin-top:3px"><div style="width:' + str(qty_w) + '%;background:#3266ad;height:4px;border-radius:2px"></div></div></td>' +
+        '<td style="padding:5px 8px;text-align:right">' + f'{row_p["Revenue"]:,.0f}' +
+        '<div style="background:#fde8e0;border-radius:2px;height:4px;margin-top:3px"><div style="width:' + str(rev_w) + '%;background:#d85a30;height:4px;border-radius:2px"></div></div></td>' +
+        '<td style="padding:5px 8px">' + heat_cells + '<span style="font-size:10px;color:#aaa;margin-right:4px">' + str(days_act) + '/' + str(total_d) + '</span></td></tr>'
+    )
+
+prod_html = (
+    '<div style="max-height:500px;overflow-y:auto">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+    '<tr style="border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white">' +
+    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">المنتج</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الكمية</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;color:#555;font-size:11px">أيام الظهور</th></tr>' +
+    prod_rows + '</table></div>'
+)
+st.markdown(prod_html, unsafe_allow_html=True)
 
 # ── COUPONS ───────────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">خصومات الكوبونات</p>', unsafe_allow_html=True)
@@ -462,12 +496,30 @@ with col1:
     st.plotly_chart(fig_coup, use_container_width=True)
 
 with col2:
-    coup["% من الإجمالي"] = (coup["Total_Discount"]/coup_total*100).round(1).astype(str)+"%"
-    coup["متوسط / أوردر"] = (coup["Total_Discount"]/coup["Orders"]).round(0).apply(lambda v: f"{v:,.0f} ج")
-    coup["Total_Discount"] = coup["Total_Discount"].apply(lambda v: f"{v:,.0f} ج")
-    coup.index = range(1, len(coup)+1)
-    st.dataframe(coup.rename(columns={"Coupon":"الكوبون","Total_Discount":"إجمالي الخصم","Orders":"الأوردرات"}),
-        use_container_width=True)
+    max_disc_c = coup["Total_Discount"].max()
+    coup_rows = ""
+    for idx_c, (_, cr) in enumerate(coup.iterrows()):
+        pct_c = cr["Total_Discount"]/coup_total*100
+        bw_c = int(cr["Total_Discount"]/max_disc_c*100) if max_disc_c > 0 else 0
+        col_c = PAL[idx_c % len(PAL)]
+        coup_rows += (
+            '<tr style="border-bottom:.5px solid #f0f0f0">' +
+            '<td style="padding:5px 8px;font-weight:600;color:' + col_c + ';font-family:monospace">' + str(cr["Coupon"]) + '</td>' +
+            '<td style="padding:5px 8px;text-align:right;font-weight:500">' + f'{cr["Total_Discount"]:,.0f}' + '</td>' +
+            '<td style="padding:5px 8px;text-align:right;color:#555">' + str(cr["Orders"]) + '</td>' +
+            '<td style="padding:5px 8px;min-width:90px"><div style="background:#eee;border-radius:3px;height:6px"><div style="width:' + str(bw_c) + '%;background:' + col_c + ';height:6px;border-radius:3px"></div></div>' +
+            '<span style="font-size:10px;color:#aaa">' + f'{pct_c:.1f}%' + '</span></td></tr>'
+        )
+    coup_html = (
+        '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<tr style="border-bottom:1.5px solid #e0e0e0">' +
+        '<th style="padding:6px 8px;text-align:left;color:#555;font-size:11px">الكوبون</th>' +
+        '<th style="padding:6px 8px;text-align:right;color:#555;font-size:11px">الخصم</th>' +
+        '<th style="padding:6px 8px;text-align:right;color:#555;font-size:11px">أوردرات</th>' +
+        '<th style="padding:6px 8px;color:#555;font-size:11px">النسبة</th></tr>' +
+        coup_rows + '</table>'
+    )
+    st.markdown(coup_html, unsafe_allow_html=True)
 
 # ── CUSTOMER REGION ───────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">مبيعات كل محافظة</p>', unsafe_allow_html=True)
@@ -514,16 +566,35 @@ fig_reg.update_layout(
 )
 st.plotly_chart(fig_reg, use_container_width=True)
 
-region_disp = region_df.copy()
-region_disp["revenue_fmt"] = region_disp["revenue"].apply(lambda v: f"{v:,.0f}")
-region_disp["aov_fmt"]     = region_disp["aov"].apply(lambda v: f"{v:,.0f}")
-region_disp["pct_fmt"]     = region_disp["pct"].astype(str)+"%"
-region_disp.index = range(1, len(region_disp)+1)
-st.dataframe(
-    region_disp[["Region","revenue_fmt","orders","items","aov_fmt","pct_fmt"]].rename(
-        columns={"Region":"المحافظة","revenue_fmt":"المبيعات (ج)","orders":"الأوردرات","items":"القطع","aov_fmt":"AOV (ج)","pct_fmt":"النسبة"}
-    ), use_container_width=True
+max_rev_reg = region_df["revenue"].max()
+reg_rows = ""
+for i2, (_, rr) in enumerate(region_df.iterrows(), 1):
+    bw_r = int(rr["revenue"]/max_rev_reg*100) if max_rev_reg > 0 else 0
+    col_r2 = REG_PAL[min(i2-1, len(REG_PAL)-1)]
+    fw_r = "600" if i2 <= 3 else "400"
+    reg_rows += (
+        '<tr style="border-bottom:.5px solid #f0f0f0">' +
+        '<td style="padding:5px 8px;color:#aaa">' + str(i2) + '</td>' +
+        '<td style="padding:5px 8px;font-weight:' + fw_r + '">' + str(rr["Region"]) + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;font-weight:500">' + f'{rr["revenue"]:,.0f}' + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{rr["orders"]:,}' + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{rr["aov"]:,.0f}' + '</td>' +
+        '<td style="padding:5px 8px;min-width:120px"><div style="background:#eee;border-radius:3px;height:6px"><div style="width:' + str(bw_r) + '%;background:' + col_r2 + ';height:6px;border-radius:3px"></div></div>' +
+        '<span style="font-size:10px;color:#aaa">' + str(rr["pct"]) + '%</span></td></tr>'
+    )
+reg_html = (
+    '<div style="max-height:520px;overflow-y:auto">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+    '<tr style="border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white">' +
+    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">المحافظة</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الأوردرات</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">AOV (ج)</th>' +
+    '<th style="padding:7px 8px;color:#555;font-size:11px;min-width:120px">النسبة</th></tr>' +
+    reg_rows + '</table></div>'
 )
+st.markdown(reg_html, unsafe_allow_html=True)
 
 # ── PAYMENT METHOD ─────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">طرق الدفع</p>', unsafe_allow_html=True)
@@ -569,16 +640,34 @@ with col_pay2:
     fig_pay_bar.update_traces(textposition="outside")
     st.plotly_chart(fig_pay_bar, use_container_width=True)
 
-pay_disp = pay_df.copy()
-pay_disp["revenue_fmt"] = pay_disp["revenue"].apply(lambda v: f"{v:,.0f}")
-pay_disp["aov_fmt"]     = pay_disp["aov"].apply(lambda v: f"{v:,.0f}")
-pay_disp["pct_fmt"]     = pay_disp["pct"].astype(str)+"%"
-pay_disp.index = range(1, len(pay_disp)+1)
-st.dataframe(
-    pay_disp[["Payment Method","revenue_fmt","orders","aov_fmt","pct_fmt"]].rename(
-        columns={"Payment Method":"طريقة الدفع","revenue_fmt":"المبيعات (ج)","orders":"الأوردرات","aov_fmt":"AOV (ج)","pct_fmt":"النسبة"}
-    ), use_container_width=True
+max_rev_pay = pay_df["revenue"].max()
+pay_rows = ""
+for i3, (_, pr) in enumerate(pay_df.iterrows(), 1):
+    bw_p = int(pr["revenue"]/max_rev_pay*100) if max_rev_pay > 0 else 0
+    col_p2 = PAY_PAL[min(i3-1, len(PAY_PAL)-1)]
+    fw_p = "600" if i3 == 1 else "400"
+    pay_rows += (
+        '<tr style="border-bottom:.5px solid #f0f0f0">' +
+        '<td style="padding:5px 8px;color:#aaa">' + str(i3) + '</td>' +
+        '<td style="padding:5px 8px;font-weight:' + fw_p + '">' + str(pr["Payment Method"]) + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;font-weight:' + fw_p + '">' + f'{pr["revenue"]:,.0f}' + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{pr["orders"]:,}' + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{pr["aov"]:,.0f}' + '</td>' +
+        '<td style="padding:5px 8px;min-width:120px"><div style="background:#eee;border-radius:3px;height:6px"><div style="width:' + str(bw_p) + '%;background:' + col_p2 + ';height:6px;border-radius:3px"></div></div>' +
+        '<span style="font-size:10px;color:#aaa">' + str(pr["pct"]) + '%</span></td></tr>'
+    )
+pay_html = (
+    '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+    '<tr style="border-bottom:1.5px solid #e0e0e0">' +
+    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">طريقة الدفع</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الأوردرات</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">AOV (ج)</th>' +
+    '<th style="padding:7px 8px;color:#555;font-size:11px;min-width:120px">النسبة</th></tr>' +
+    pay_rows + '</table>'
 )
+st.markdown(pay_html, unsafe_allow_html=True)
 
 st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:#aaa;font-size:11px'>Raneen Analytics · {date_min} → {date_max}</p>", unsafe_allow_html=True)
