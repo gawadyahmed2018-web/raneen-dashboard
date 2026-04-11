@@ -398,15 +398,23 @@ with col2:
 # ── SELLERS ANALYSIS ──────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">تحليل الـ Marketplace Sellers</p>', unsafe_allow_html=True)
 
-# Use Seller_Raw column (real seller names) from df which comes from process()
-# For default data loaded from CSV, Seller_Raw is already stored in the file
-df_for_sellers = df.copy()
-if "Seller_Raw" not in df_for_sellers.columns:
-    df_for_sellers["Seller_Raw"] = df_for_sellers["Marketplace Seller"]
-df_mp2 = df_for_sellers[df_for_sellers["Seller_Raw"] != "raneen"].copy()
+# Build sellers df using df_full which has original Seller_Raw column
+df_s = df_full.copy()
+df_s["Purchase Date"] = pd.to_datetime(df_s["Purchase Date"], errors="coerce")
+if "Day" not in df_s.columns:
+    df_s["Day"] = df_s["Purchase Date"].dt.strftime("%b %d")
+# Seller_Raw: real seller name (saved in default CSV and added by process())
+if "Seller_Raw" not in df_s.columns:
+    # fallback: derive from Marketplace Seller raw values
+    df_s["Seller_Raw"] = df_s["Marketplace Seller"].apply(
+        lambda x: "raneen" if pd.isna(x) or str(x).strip() == "" else str(x).strip()
+    )
+# Filter only dates in selected range
+df_s = df_s[df_s["Day"].isin(days_sorted)]
+df_mp2 = df_s[df_s["Seller_Raw"] != "raneen"].copy()
 df_mp2["Seller"] = df_mp2["Seller_Raw"]
-# Sellers always show full period heatmap (all days in sheet)
-all_days_full = sorted(df["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
+# Sellers heatmap uses full sheet days (not filtered range)
+all_days_full = sorted(df_full["Day"].dropna().unique(), key=lambda d: pd.to_datetime(d+" 2026"))
 total_days_n = len(all_days_full)
 last_day = all_days_full[-1]
 
@@ -460,11 +468,24 @@ n_long    = (stats_df["status"]=="توقف فترة").sum()
 n_warn    = stats_df["warn"].sum()
 
 c1,c2,c3,c4,c5 = st.columns(5)
-with c1: st.markdown(f'<div class="metric-card" style="border-left:4px solid #2a9e75"><p class="metric-label">نشط</p><p class="metric-value" style="color:#2a9e75">{n_active}</p></div>', unsafe_allow_html=True)
-with c2: st.markdown(f'<div class="metric-card" style="border-left:4px solid #ba7517"><p class="metric-label">توقف مؤخراً</p><p class="metric-value" style="color:#ba7517">{n_recent}</p></div>', unsafe_allow_html=True)
-with c3: st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">توقف 2-3 أيام</p><p class="metric-value" style="color:#d85a30">{n_mid}</p></div>', unsafe_allow_html=True)
-with c4: st.markdown(f'<div class="metric-card" style="border-left:4px solid #7f77dd"><p class="metric-label">توقف فترة</p><p class="metric-value" style="color:#7f77dd">{n_long}</p></div>', unsafe_allow_html=True)
-with c5: st.markdown(f'<div class="metric-card" style="border-left:4px solid #e24b4a"><p class="metric-label">⚠️ تنبيه مخزون</p><p class="metric-value" style="color:#e24b4a">{n_warn}</p></div>', unsafe_allow_html=True)
+with c1: st.markdown(f'<div class="metric-card" style="border-left:4px solid #2a9e75"><p class="metric-label">نشط (باع في آخر يوم)</p><p class="metric-value" style="color:#2a9e75">{n_active}</p><p class="metric-sub">seller</p></div>', unsafe_allow_html=True)
+with c2: st.markdown(f'<div class="metric-card" style="border-left:4px solid #ba7517"><p class="metric-label">توقف مؤخراً (يوم واحد)</p><p class="metric-value" style="color:#ba7517">{n_recent}</p><p class="metric-sub">seller</p></div>', unsafe_allow_html=True)
+with c3: st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">توقف 2–3 أيام</p><p class="metric-value" style="color:#d85a30">{n_mid}</p><p class="metric-sub">seller</p></div>', unsafe_allow_html=True)
+with c4: st.markdown(f'<div class="metric-card" style="border-left:4px solid #7f77dd"><p class="metric-label">توقف فترة (+4 أيام)</p><p class="metric-value" style="color:#7f77dd">{n_long}</p><p class="metric-sub">seller — محتمل نفاد مخزون</p></div>', unsafe_allow_html=True)
+with c5: st.markdown(f'<div class="metric-card" style="border-left:4px solid #e24b4a"><p class="metric-label">⚠️ تنبيه مخزون</p><p class="metric-value" style="color:#e24b4a">{n_warn}</p><p class="metric-sub">seller</p></div>', unsafe_allow_html=True)
+
+# Top 10 sellers by revenue
+st.markdown("**أعلى 10 Sellers مبيعاً**")
+top10 = stats_df.head(10).copy()
+top10_html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+top10_html += '<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">#</th><th style="text-align:left;padding:6px 8px;color:#888;font-size:11px">Seller</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">المبيعات (ج)</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الكمية</th><th style="text-align:right;padding:6px 8px;color:#888;font-size:11px">الأوردرات</th><th style="padding:6px 8px;color:#888;font-size:11px">آخر بيع</th><th style="padding:6px 8px;color:#888;font-size:11px">الحالة</th><th style="padding:6px 8px;color:#888;font-size:11px">نشاط الأيام</th></tr>'
+for i, r in enumerate(top10.itertuples(), 1):
+    sc = status_colors.get(r.status, "#888")
+    sb = status_bg.get(r.status, "#f5f5f5")
+    hm = make_heatmap(r.daily, all_days_full)
+    top10_html += f'<tr style="border-bottom:.5px solid #f5f5f5"><td style="padding:5px 8px;color:#aaa">{i}</td><td style="padding:5px 8px;font-weight:500">{r.Seller}</td><td style="text-align:right;padding:5px 8px;font-weight:500">{r.total_revenue:,.0f}</td><td style="text-align:right;padding:5px 8px">{int(r.total_qty):,}</td><td style="text-align:right;padding:5px 8px">{int(r.orders):,}</td><td style="padding:5px 8px">{r.last}</td><td style="padding:5px 8px"><span style="background:{sb};color:{sc};font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500">{r.status}</span></td><td style="padding:5px 8px">{hm}</td></tr>'
+top10_html += '</table>'
+st.markdown(top10_html, unsafe_allow_html=True)
 
 # Heatmap HTML helper
 def make_heatmap(daily, days):
