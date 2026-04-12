@@ -106,9 +106,9 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     uploaded = st.file_uploader("", type=["csv"], label_visibility="collapsed")
 
-    # Auto-save to GitHub when file uploaded
+    # Auto-save processed CSV to GitHub when file uploaded
     if uploaded is not None:
-        import base64, requests
+        import base64, requests, io
         try:
             token = st.secrets["GITHUB_TOKEN"]
             repo = "gawadyahmed2018-web/raneen-dashboard"
@@ -116,21 +116,21 @@ with st.sidebar:
             api_url = f"https://api.github.com/repos/{repo}/contents/{path}"
             headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
 
-            # Process and save
+            # Process the uploaded file first then save processed version
             uploaded.seek(0)
-            raw_bytes = uploaded.read()
+            df_processed = process(uploaded)
+            # Convert processed df to CSV bytes
+            csv_buffer = io.StringIO()
+            df_processed.to_csv(csv_buffer, index=False)
+            raw_bytes = csv_buffer.getvalue().encode("utf-8")
 
             # Get current file SHA (needed for update)
             r_get = requests.get(api_url, headers=headers)
             sha = r_get.json().get("sha", "") if r_get.status_code == 200 else ""
 
-            # Upload
+            # Upload processed CSV
             encoded = base64.b64encode(raw_bytes).decode()
-            payload = {
-                "message": "Auto-update default data",
-                "content": encoded,
-                "sha": sha
-            }
+            payload = {"message": "Auto-update default data", "content": encoded, "sha": sha}
             r_put = requests.put(api_url, headers=headers, json=payload)
 
             if r_put.status_code in [200, 201]:
@@ -187,10 +187,11 @@ col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
 with col_dr1:
     date_from = st.selectbox("من يوم", options=all_days, index=0, key="date_from")
 with col_dr2:
-    # Filter options to only days >= date_from
     from_idx = all_days.index(date_from)
     days_to_options = all_days[from_idx:]
-    date_to = st.selectbox("إلى يوم", options=days_to_options, index=len(days_to_options)-1, key="date_to")
+    # Always default to last available day
+    default_to_idx = len(days_to_options) - 1
+    date_to = st.selectbox("إلى يوم", options=days_to_options, index=default_to_idx, key="date_to")
 with col_dr3:
     st.markdown("")
     st.markdown("")
