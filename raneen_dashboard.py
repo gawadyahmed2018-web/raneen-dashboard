@@ -105,6 +105,42 @@ with st.sidebar:
     </style>
     """, unsafe_allow_html=True)
     uploaded = st.file_uploader("", type=["csv"], label_visibility="collapsed")
+
+    # Auto-save to GitHub when file uploaded
+    if uploaded is not None:
+        import base64, requests
+        try:
+            token = st.secrets["GITHUB_TOKEN"]
+            repo = "gawadyahmed2018-web/raneen-dashboard"
+            path = "raneen_default_data.csv"
+            api_url = f"https://api.github.com/repos/{repo}/contents/{path}"
+            headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+
+            # Process and save
+            uploaded.seek(0)
+            raw_bytes = uploaded.read()
+
+            # Get current file SHA (needed for update)
+            r_get = requests.get(api_url, headers=headers)
+            sha = r_get.json().get("sha", "") if r_get.status_code == 200 else ""
+
+            # Upload
+            encoded = base64.b64encode(raw_bytes).decode()
+            payload = {
+                "message": "Auto-update default data",
+                "content": encoded,
+                "sha": sha
+            }
+            r_put = requests.put(api_url, headers=headers, json=payload)
+
+            if r_put.status_code in [200, 201]:
+                st.success("✅ اتحفظ كـ Default أوتوماتيك!")
+            else:
+                st.warning("⚠️ الداشبورد شغال بس التحديث التلقائي فشل")
+            uploaded.seek(0)
+        except Exception:
+            uploaded.seek(0)
+
     st.markdown("---")
     st.markdown("**كيفية الاستخدام:**")
     st.markdown("1. نزّل الشيت من ماجينتو\n2. ارفعه هنا\n3. الداشبورد بيظهر فوراً")
