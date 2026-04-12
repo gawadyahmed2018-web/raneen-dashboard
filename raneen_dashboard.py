@@ -471,8 +471,8 @@ st.plotly_chart(fig_line, use_container_width=True)
 # ── TOP PRODUCTS with heatbar ────────────────────────────────────────────────
 st.markdown('<p class="section-title">أعلى المنتجات طلبًا</p>', unsafe_allow_html=True)
 
-# فلترين: بالقسم وبعدد أيام النشاط
-_col_tp1, _col_tp2 = st.columns([1,1])
+# فلاتر: بالقسم + بعدد أيام النشاط + بمعيار الأداء
+_col_tp1, _col_tp2, _col_tp3 = st.columns([1,1,1])
 with _col_tp1:
     _all_cats_tp = ["كل الأقسام"] + sorted(df["Attribute Set"].dropna().unique().tolist())
     _sel_cat_tp = st.selectbox("فلتر بالقسم", _all_cats_tp, key="tp_cat_filter", label_visibility="collapsed")
@@ -483,6 +483,9 @@ with _col_tp2:
         "فلتر بعدد أيام النشاط (على الأقل)",
         _days_options, key="tp_days_filter", label_visibility="collapsed"
     )
+with _col_tp3:
+    _perf_options = ["كل المنتجات", "⭐ ممتاز (90%+)", "✅ جيد (80–90%)", "🔶 متوسط (70–80%)", "🔴 ضعيف (أقل من 70%)"]
+    _sel_perf_tp = st.selectbox("فلتر بمعيار الأداء", _perf_options, key="tp_perf_filter", label_visibility="collapsed")
 
 _df_tp = df.copy()
 if _sel_cat_tp != "كل الأقسام":
@@ -498,42 +501,74 @@ if _sel_days_tp != "كل الأيام":
     _min_days = int(_sel_days_tp)
     top_prod = top_prod[top_prod["Days"] >= _min_days]
 
+total_d = len(days_sorted)
+top_prod["Pct"] = (top_prod["Days"] / total_d * 100).round(1) if total_d > 0 else 0
+
+# فلتر الأداء
+if _sel_perf_tp == "⭐ ممتاز (90%+)":
+    top_prod = top_prod[top_prod["Pct"] >= 90]
+elif _sel_perf_tp == "✅ جيد (80–90%)":
+    top_prod = top_prod[(top_prod["Pct"] >= 80) & (top_prod["Pct"] < 90)]
+elif _sel_perf_tp == "🔶 متوسط (70–80%)":
+    top_prod = top_prod[(top_prod["Pct"] >= 70) & (top_prod["Pct"] < 80)]
+elif _sel_perf_tp == "🔴 ضعيف (أقل من 70%)":
+    top_prod = top_prod[top_prod["Pct"] < 70]
+
 top_prod = top_prod.head(30).reset_index()
 
-max_qty_p = top_prod["Qty"].max()
-max_rev_p = top_prod["Revenue"].max()
-total_d = len(days_sorted)
+def _perf_style(pct):
+    if pct >= 90:
+        return {"bg": "#e6f9f0", "color": "#0a7a4e", "badge_bg": "#0a7a4e", "label": "ممتاز ⭐"}
+    elif pct >= 80:
+        return {"bg": "#e8f4fd", "color": "#1a5fa8", "badge_bg": "#1a5fa8", "label": "جيد ✅"}
+    elif pct >= 70:
+        return {"bg": "#fff8e6", "color": "#9a6400", "badge_bg": "#ba7517", "label": "متوسط 🔶"}
+    else:
+        return {"bg": "#fdf0f0", "color": "#b91c1c", "badge_bg": "#d85a30", "label": "ضعيف 🔴"}
+
+max_qty_p = top_prod["Qty"].max() if len(top_prod) > 0 else 1
+max_rev_p = top_prod["Revenue"].max() if len(top_prod) > 0 else 1
 
 prod_rows = ""
 for idx_p, row_p in top_prod.iterrows():
     qty_w = int(row_p["Qty"] / max_qty_p * 80) if max_qty_p > 0 else 0
     rev_w = int(row_p["Revenue"] / max_rev_p * 80) if max_rev_p > 0 else 0
     days_act = int(row_p["Days"])
+    pct_val  = row_p["Pct"]
+    ps       = _perf_style(pct_val)
     heat_cells = "".join([
-        '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin:1px;background:%s"></span>' % ("#3266ad" if j < days_act else "#e0e0e0")
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin:1px;background:%s"></span>' % (ps["badge_bg"] if j < days_act else "#e0e0e0")
         for j in range(total_d)
     ])
     name_s = str(row_p["Name"])[:50] + ("..." if len(str(row_p["Name"])) > 50 else "")
+    pct_cell = (
+        f'<div style="background:{ps["bg"]};border-radius:6px;padding:3px 7px;display:inline-block;min-width:90px;text-align:center">'
+        f'<span style="font-weight:700;color:{ps["color"]};font-size:13px">{pct_val:.0f}%</span><br>'
+        f'<span style="font-size:10px;color:{ps["color"]};opacity:.85">{ps["label"]}</span>'
+        f'</div>'
+    )
     prod_rows += (
         '<tr style="border-bottom:.5px solid #f0f0f0">' +
         '<td style="padding:5px 8px;color:#aaa">' + str(idx_p+1) + '</td>' +
-        '<td style="padding:5px 8px;max-width:220px" title="' + str(row_p["Name"]) + '">' + name_s + '</td>' +
+        '<td style="padding:5px 8px;max-width:200px" title="' + str(row_p["Name"]) + '">' + name_s + '</td>' +
         '<td style="padding:5px 8px;text-align:right"><span style="font-weight:600">' + f'{int(row_p["Qty"]):,}' + '</span>' +
         '<div style="background:#e8f0fb;border-radius:2px;height:4px;margin-top:3px"><div style="width:' + str(qty_w) + '%;background:#3266ad;height:4px;border-radius:2px"></div></div></td>' +
         '<td style="padding:5px 8px;text-align:right">' + f'{row_p["Revenue"]:,.0f}' +
         '<div style="background:#fde8e0;border-radius:2px;height:4px;margin-top:3px"><div style="width:' + str(rev_w) + '%;background:#d85a30;height:4px;border-radius:2px"></div></div></td>' +
-        '<td style="padding:5px 8px">' + heat_cells + '<span style="font-size:10px;color:#aaa;margin-right:4px">' + str(days_act) + '/' + str(total_d) + '</span></td></tr>'
+        '<td style="padding:5px 8px">' + heat_cells + '<span style="font-size:10px;color:#aaa;margin-right:4px">' + str(days_act) + '/' + str(total_d) + '</span></td>' +
+        '<td style="padding:5px 8px;text-align:center">' + pct_cell + '</td></tr>'
     )
 
 prod_html = (
     '<div style="max-height:500px;overflow-y:auto">' +
     '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-    '<tr style="border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white">' +
+    '<tr style="border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white;z-index:2">' +
     '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
     '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">المنتج</th>' +
     '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الكمية</th>' +
     '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
-    '<th style="padding:7px 8px;color:#555;font-size:11px">أيام الظهور</th></tr>' +
+    '<th style="padding:7px 8px;color:#555;font-size:11px">أيام الظهور</th>' +
+    '<th style="padding:7px 8px;text-align:center;color:#555;font-size:11px">نسبة الأداء</th></tr>' +
     prod_rows + '</table></div>'
 )
 st.markdown(prod_html, unsafe_allow_html=True)
