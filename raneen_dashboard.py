@@ -64,10 +64,14 @@ def get_price_changes(df):
         for _, row in grp.iterrows():
             if prev is None: prev = row["Item Price"]; continue
             if row["Item Price"] != prev:
+                change_date = row["Purchase Date"].strftime("%b %d")
+                # حساب الكمية المباعة من هذا المنتج في يوم التغيير
+                day_qty = grp[grp["Day"] == change_date]["Qty Ordered"].sum()
                 changes.append({"SKU":sku,"Product":name,"Category":attr,
-                    "Date":row["Purchase Date"].strftime("%b %d"),
+                    "Date":change_date,
                     "Price Before":prev,"Price After":row["Item Price"],
-                    "Change":round(row["Item Price"]-prev,2)})
+                    "Change":round(row["Item Price"]-prev,2),
+                    "Qty on Day":int(day_qty)})
                 prev = row["Item Price"]
         if len(changes)>=3:
             for c in changes: c["# Changes"]=len(changes)
@@ -357,7 +361,7 @@ st.plotly_chart(fig_cat, use_container_width=True)
 # Category table with heatmap bars
 max_total = cat_ch["Total"].max() if len(cat_ch) > 0 else 1
 cat_html = """<div style='max-height:520px;overflow-y:auto'><table style='width:100%;border-collapse:collapse;font-size:12px'>
-<tr style='border-bottom:1.5px solid #e0e0e0'>
+<tr style='border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white;z-index:2'>
 <th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>#</th>
 <th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>القسم</th>
 <th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>Channel</th>
@@ -413,6 +417,7 @@ if not pc.empty:
 <th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>قبل (ج)</th>
 <th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>بعد (ج)</th>
 <th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>الفرق</th>
+<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>كمية اليوم</th>
 <th style='padding:7px 10px;text-align:center;color:#555;font-size:11px'># تغييرات</th>
 </tr>"""
     last_sku = None
@@ -433,12 +438,14 @@ if not pc.empty:
         change_val = row["Change"]
         chg_color = "#2a9e75" if change_val > 0 else "#d85a30"
         chg_str   = f'+{change_val:,.0f}' if change_val > 0 else f'{change_val:,.0f}'
+        qty_day   = int(row.get("Qty on Day", 0))
         pc_html += f"""<tr style='border-bottom:.5px solid #eee'>
 <td style='padding:5px 10px;color:var(--color-text-tertiary,#aaa);font-size:11px;padding-right:20px'>↳</td>
 <td style='padding:5px 10px;color:#555'>{row["Date"]}</td>
 <td style='padding:5px 10px;text-align:right;color:#555'>{row["Price Before"]:,.0f}</td>
 <td style='padding:5px 10px;text-align:right;font-weight:500'>{row["Price After"]:,.0f}</td>
 <td style='padding:5px 10px;text-align:right;font-weight:600;color:{chg_color}'>{chg_str}</td>
+<td style='padding:5px 10px;text-align:right;font-weight:600;color:#533ab7'>{qty_day:,}</td>
 <td></td>
 </tr>"""
     pc_html += "</table>"
@@ -464,11 +471,34 @@ st.plotly_chart(fig_line, use_container_width=True)
 # ── TOP PRODUCTS with heatbar ────────────────────────────────────────────────
 st.markdown('<p class="section-title">أعلى المنتجات طلبًا</p>', unsafe_allow_html=True)
 
-top_prod = df.groupby("Name").agg(
+# فلترين: بالقسم وبعدد أيام النشاط
+_col_tp1, _col_tp2 = st.columns([1,1])
+with _col_tp1:
+    _all_cats_tp = ["كل الأقسام"] + sorted(df["Attribute Set"].dropna().unique().tolist())
+    _sel_cat_tp = st.selectbox("فلتر بالقسم", _all_cats_tp, key="tp_cat_filter", label_visibility="collapsed")
+with _col_tp2:
+    _max_days_tp = len(days_sorted)
+    _days_options = ["كل الأيام"] + [str(d) for d in range(1, _max_days_tp + 1)]
+    _sel_days_tp = st.selectbox(
+        "فلتر بعدد أيام النشاط (على الأقل)",
+        _days_options, key="tp_days_filter", label_visibility="collapsed"
+    )
+
+_df_tp = df.copy()
+if _sel_cat_tp != "كل الأقسام":
+    _df_tp = _df_tp[_df_tp["Attribute Set"] == _sel_cat_tp]
+
+top_prod = _df_tp.groupby("Name").agg(
     Qty=("Qty Ordered","sum"),
     Revenue=("Value After Discounts","sum"),
     Days=("Day","nunique")
-).sort_values("Qty", ascending=False).head(30).reset_index()
+).sort_values("Qty", ascending=False)
+
+if _sel_days_tp != "كل الأيام":
+    _min_days = int(_sel_days_tp)
+    top_prod = top_prod[top_prod["Days"] >= _min_days]
+
+top_prod = top_prod.head(30).reset_index()
 
 max_qty_p = top_prod["Qty"].max()
 max_rev_p = top_prod["Revenue"].max()
