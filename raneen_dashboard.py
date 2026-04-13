@@ -126,7 +126,7 @@ def get_price_changes(df):
 # ── DEFAULT DATA URL ─────────────────────────────────────────────────────────
 DEFAULT_DATA_URL = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/raneen_default_data.csv"
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def load_default():
     return pd.read_csv(DEFAULT_DATA_URL)
 
@@ -184,10 +184,13 @@ with st.sidebar:
 
             if r_put.status_code in [200, 201]:
                 st.success("✅ اتحفظ كـ Default أوتوماتيك!")
+                load_default.clear()  # امسح الـ cache عشان الريفريش الجاي ياخد الداتا الجديدة
             else:
-                st.warning("⚠️ الداشبورد شغال بس التحديث التلقائي فشل")
+                err_detail = r_put.json().get("message","")
+                st.warning(f"⚠️ الداشبورد شغال بس التحديث التلقائي فشل — {r_put.status_code}: {err_detail}")
             uploaded.seek(0)
-        except Exception:
+        except Exception as e:
+            st.warning(f"⚠️ خطأ في الحفظ: {e}")
             uploaded.seek(0)
 
     st.markdown("---")
