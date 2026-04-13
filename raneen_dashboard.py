@@ -345,7 +345,12 @@ elif channel_filter == "Raneen فقط":
 elif channel_filter == "MP فقط":
     cat_ch = cat_ch[(cat_ch["MP"]>0) & (cat_ch["raneen"]==0)]
 
-st.caption(f"عرض {len(cat_ch)} من {len(cat_all)} قسم — الشارت بيعرض أعلى 12 من النتايج")
+_dl_col1, _dl_col2 = st.columns([3,1])
+with _dl_col1:
+    st.caption(f"عرض {len(cat_ch)} من {len(cat_all)} قسم — الشارت بيعرض أعلى 12 من النتايج")
+with _dl_col2:
+    _cat_csv = cat_ch[["Attribute Set","Channel","raneen","MP","Total"]].rename(columns={"Attribute Set":"القسم","raneen":"Raneen (ج)","MP":"MP (ج)","Total":"الإجمالي (ج)","Channel":"Channel"})
+    st.download_button("⬇ تحميل CSV", _cat_csv.to_csv(index=False, encoding="utf-8-sig"), "مبيعات_الأقسام.csv", "text/csv", use_container_width=True)
 
 fig_cat = go.Figure()
 chart_data = cat_ch.head(12)
@@ -407,7 +412,11 @@ if not pc.empty:
     pc_show = pc if selected_cat=="الكل" else pc[pc["Category"]==selected_cat]
     pc_show = pc_show.sort_values(["# Changes","SKU"], ascending=[False,True])
     n_prods = pc_show["SKU"].nunique()
-    st.caption(f"{n_prods} منتج · {len(pc_show)} تغيير")
+    _pc_col1, _pc_col2 = st.columns([3,1])
+    with _pc_col1:
+        st.caption(f"{n_prods} منتج · {len(pc_show)} تغيير")
+    with _pc_col2:
+        st.download_button("⬇ تحميل CSV", pc_show.to_csv(index=False, encoding="utf-8-sig"), "تغييرات_السعر.csv", "text/csv", use_container_width=True)
     # Build grouped HTML table - product name appears once, changes listed below
     pc_show = pc_show.copy()
     pc_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
@@ -572,8 +581,8 @@ prod_html = (
     prod_rows + '</table></div>'
 )
 st.markdown(prod_html, unsafe_allow_html=True)
-
-# ── COUPONS ───────────────────────────────────────────────────────────────────
+_tp_dl = top_prod[["Name","Qty","Revenue","Days","Pct"]].rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
+st.download_button("⬇ تحميل CSV — أعلى المنتجات", _tp_dl.to_csv(index=False, encoding="utf-8-sig"), "أعلى_المنتجات.csv", "text/csv")
 st.markdown('<p class="section-title">خصومات الكوبونات</p>', unsafe_allow_html=True)
 
 c_df = df[df["Coupon Code"].notna() & (df["Coupon Code"].astype(str).str.strip()!="")].copy()
@@ -697,8 +706,8 @@ reg_html = (
     reg_rows + '</table></div>'
 )
 st.markdown(reg_html, unsafe_allow_html=True)
-
-# ── PAYMENT METHOD ─────────────────────────────────────────────────────────────
+_reg_dl = region_df[["Region","revenue","orders","aov","pct"]].rename(columns={"Region":"المحافظة","revenue":"المبيعات (ج)","orders":"الأوردرات","aov":"AOV (ج)","pct":"النسبة %"})
+st.download_button("⬇ تحميل CSV — المحافظات", _reg_dl.to_csv(index=False, encoding="utf-8-sig"), "مبيعات_المحافظات.csv", "text/csv")
 st.markdown('<p class="section-title">طرق الدفع</p>', unsafe_allow_html=True)
 
 pay_df = df.groupby("Payment Method").agg(
@@ -770,6 +779,6 @@ pay_html = (
     pay_rows + '</table>'
 )
 st.markdown(pay_html, unsafe_allow_html=True)
-
-st.markdown("---")
+_pay_dl = pay_df[["Payment Method","revenue","orders","aov","pct"]].rename(columns={"Payment Method":"طريقة الدفع","revenue":"المبيعات (ج)","orders":"الأوردرات","aov":"AOV (ج)","pct":"النسبة %"})
+st.download_button("⬇ تحميل CSV — طرق الدفع", _pay_dl.to_csv(index=False, encoding="utf-8-sig"), "طرق_الدفع.csv", "text/csv")
 st.markdown(f"<p style='text-align:center;color:#aaa;font-size:11px'>Raneen Analytics · {date_min} → {date_max}</p>", unsafe_allow_html=True)
