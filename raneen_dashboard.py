@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+import io
 
 st.set_page_config(page_title="Raneen Sales Dashboard", layout="wide", page_icon="📊")
 
@@ -23,8 +24,48 @@ st.markdown("""
     border-bottom: 2px solid #1F3864; padding-bottom: 6px;
     margin: 2rem 0 1rem;
 }
+[data-testid="stDownloadButton"] > button {
+    background: #1F3864 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    padding: 6px 14px !important;
+    transition: background .2s !important;
+}
+[data-testid="stDownloadButton"] > button:hover {
+    background: #2a4f8a !important;
+    color: white !important;
+}
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stTextInput"] > div > div > input {
+    background: #eef3fb !important;
+    border: 1.5px solid #3266ad !important;
+    border-radius: 8px !important;
+    color: #1F3864 !important;
+    font-weight: 500 !important;
+}
+[data-testid="stSelectbox"] label,
+[data-testid="stTextInput"] label {
+    color: #1F3864 !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+}
+.tbl-header th {
+    background: #1F3864 !important;
+    color: white !important;
+    font-weight: 600 !important;
+}
+.pct-bold { font-weight: 700 !important; }
 </style>
 """, unsafe_allow_html=True)
+
+def to_excel(df_export):
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df_export.to_excel(writer, index=False, sheet_name="Sheet1")
+    return buf.getvalue()
 
 COLORS = {"raneen": "#3266ad", "MP": "#d85a30"}
 PAL = ["#3266ad","#185fa5","#378add","#85b7eb","#d85a30","#ba7517","#2a9e75","#533ab7","#993556","#2c2c2a"]
@@ -43,7 +84,6 @@ def process(file):
     for col in ["Item Price","Discount Amount","Marketing Discount","Commercial Discount","Row Total"]:
         df[col] = clean_money(df[col])
     df["Value After Discounts"] = df["Row Total"] - df["Discount Amount"]
-    # Keep raw seller name before converting to MP/raneen
     df["Seller_Raw"] = df["Marketplace Seller"].apply(
         lambda x: "raneen" if pd.isna(x) or str(x).strip()=="" else str(x).strip()
     )
@@ -64,10 +104,13 @@ def get_price_changes(df):
         for _, row in grp.iterrows():
             if prev is None: prev = row["Item Price"]; continue
             if row["Item Price"] != prev:
+                change_date = row["Purchase Date"].strftime("%b %d")
+                day_qty = grp[grp["Day"] == change_date]["Qty Ordered"].sum()
                 changes.append({"SKU":sku,"Product":name,"Category":attr,
-                    "Date":row["Purchase Date"].strftime("%b %d"),
+                    "Date":change_date,
                     "Price Before":prev,"Price After":row["Item Price"],
-                    "Change":round(row["Item Price"]-prev,2)})
+                    "Change":round(row["Item Price"]-prev,2),
+                    "Qty on Day":int(day_qty)})
                 prev = row["Item Price"]
         if len(changes)>=3:
             for c in changes: c["# Changes"]=len(changes)
@@ -114,12 +157,11 @@ with st.sidebar:
             repo  = "gawadyahmed2018-web/raneen-dashboard"
             gh_headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
 
-            # ── Process uploaded file ──────────────────────────────────────
+            # Process uploaded file
             uploaded.seek(0)
             df_processed = process(uploaded)
 
             def _upload_to_github(path, df_to_save, label):
-                """Upload a dataframe as CSV to GitHub, create or update."""
                 buf = _io.StringIO()
                 df_to_save.to_csv(buf, index=False)
                 raw = buf.getvalue().encode("utf-8")
@@ -131,27 +173,20 @@ with st.sidebar:
                 r_put = requests.put(api_url, headers=gh_headers, json=payload)
                 return r_put.status_code in [200, 201]
 
-            # ── 1. Always save as latest default ──────────────────────────
+            # 1. Save as latest default
             ok_default = _upload_to_github("raneen_default_data.csv", df_processed, "default data")
 
-            # ── 2. Detect months in uploaded data & save monthly archives ──
-            df_processed["_month"] = df_processed["Purchase Date"].apply(
-                lambda x: pd.to_datetime(x, errors="coerce")
-            )
-            df_processed["_ym"] = df_processed["_month"].dt.to_period("M").astype(str)
-            months_in_data = df_processed["_ym"].dropna().unique().tolist()
-
+            # 2. Save monthly archive automatically
+            df_processed["_dt"] = pd.to_datetime(df_processed["Purchase Date"], errors="coerce")
+            df_processed["_ym"] = df_processed["_dt"].dt.to_period("M").astype(str)
             monthly_saved = []
-            for ym in months_in_data:
-                df_month = df_processed[df_processed["_ym"] == ym].drop(columns=["_month","_ym"], errors="ignore")
-                # e.g. "2026-04" → "raneen_2026_04.csv"
+            for ym in df_processed["_ym"].dropna().unique():
+                df_month = df_processed[df_processed["_ym"] == ym].drop(columns=["_dt","_ym"], errors="ignore")
                 fname = "archive/raneen_" + ym.replace("-", "_") + ".csv"
                 if _upload_to_github(fname, df_month, ym):
                     monthly_saved.append(ym)
+            df_processed.drop(columns=["_dt","_ym"], errors="ignore", inplace=True)
 
-            df_processed.drop(columns=["_month","_ym"], errors="ignore", inplace=True)
-
-            # ── Feedback ──────────────────────────────────────────────────
             if ok_default:
                 msg = "✅ اتحفظ كـ Default أوتوماتيك!"
                 if monthly_saved:
@@ -173,11 +208,9 @@ using_default = uploaded is None
 if using_default:
     try:
         df_full = load_default()
-        # Make sure Purchase Date is parsed
         df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
         if "Day" not in df_full.columns:
             df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
-        # Show update button at top
         st.markdown("""
         <div style="background:#1F3864;border-radius:10px;padding:1rem 1.5rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
           <div>
@@ -201,8 +234,17 @@ all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026
 all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
 
 # ── DATE RANGE FILTER ────────────────────────────────────────────────────────
-st.markdown("# 📊 Raneen Sales Dashboard")
-st.markdown('<p style="color:#3266ad;font-size:16px;font-weight:600;margin-top:-10px;letter-spacing:.01em">✦ Created by / Ahmed Khamis</p>', unsafe_allow_html=True)
+_hcol1, _hcol2 = st.columns([5, 1])
+with _hcol1:
+    st.markdown("# 📊 Raneen Sales Dashboard")
+    st.markdown('<p style="background:linear-gradient(90deg,#1F3864,#3266ad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:19px;font-weight:800;margin-top:-8px;letter-spacing:.02em">✦ Created by Ahmed Khamis</p>', unsafe_allow_html=True)
+with _hcol2:
+    try:
+        from PIL import Image
+        _logo = Image.open("/mnt/user-data/outputs/raneen_logo.jpg")
+        st.image(_logo, width=110)
+    except Exception:
+        pass
 st.markdown("---")
 
 col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
@@ -211,7 +253,6 @@ with col_dr1:
 with col_dr2:
     from_idx = all_days.index(date_from)
     days_to_options = all_days[from_idx:]
-    # Always default to last available day
     default_to_idx = len(days_to_options) - 1
     date_to = st.selectbox("إلى يوم", options=days_to_options, index=default_to_idx, key="date_to")
 with col_dr3:
@@ -222,7 +263,6 @@ with col_dr3:
 
 st.markdown("---")
 
-# Filter dataframe based on selected date range
 days_range = all_days[all_days.index(date_from): all_days.index(date_to)+1]
 df = df_full[df_full["Day"].isin(days_range)].copy()
 
@@ -308,7 +348,6 @@ fig_ts.add_trace(go.Scatter(
     hovertemplate="<b>%{x}</b><br>الإجمالي: %{y:,.0f} ج<extra></extra>"
 ))
 
-# Add percentage annotations on hover
 for i, day in enumerate(days_sorted):
     tot = tot_vals[i]
     if tot > 0:
@@ -327,7 +366,6 @@ fig_ts.update_layout(
 )
 st.plotly_chart(fig_ts, use_container_width=True)
 
-# Summary row below chart
 col_ts1, col_ts2, col_ts3 = st.columns(3)
 with col_ts1:
     st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي الفترة</p><p class="metric-value">{total/1e6:.2f}M ج</p><p class="metric-sub">{total_orders:,} أوردر</p></div>', unsafe_allow_html=True)
@@ -363,7 +401,12 @@ elif channel_filter == "Raneen فقط":
 elif channel_filter == "MP فقط":
     cat_ch = cat_ch[(cat_ch["MP"]>0) & (cat_ch["raneen"]==0)]
 
-st.caption(f"عرض {len(cat_ch)} من {len(cat_all)} قسم — الشارت بيعرض أعلى 12 من النتايج")
+_dl_col1, _dl_col2 = st.columns([3,1])
+with _dl_col1:
+    st.caption(f"عرض {len(cat_ch)} من {len(cat_all)} قسم — الشارت بيعرض أعلى 12 من النتايج")
+with _dl_col2:
+    _cat_csv = cat_ch[["Attribute Set","Channel","raneen","MP","Total"]].rename(columns={"Attribute Set":"القسم","raneen":"Raneen (ج)","MP":"MP (ج)","Total":"الإجمالي (ج)","Channel":"Channel"})
+    st.download_button("⬇ تصدير Excel", to_excel(_cat_csv), "مبيعات_الأقسام.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
 fig_cat = go.Figure()
 chart_data = cat_ch.head(12)
@@ -376,17 +419,16 @@ fig_cat.update_layout(barmode="group", height=max(320, len(chart_data)*38),
     legend=dict(orientation="h", yanchor="bottom", y=1.02), xaxis=dict(tickformat=",.0f"))
 st.plotly_chart(fig_cat, use_container_width=True)
 
-# Category table with heatmap bars
 max_total = cat_ch["Total"].max() if len(cat_ch) > 0 else 1
 cat_html = """<div style='max-height:520px;overflow-y:auto'><table style='width:100%;border-collapse:collapse;font-size:12px'>
-<tr style='border-bottom:1.5px solid #e0e0e0'>
-<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>#</th>
-<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>القسم</th>
-<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>Channel</th>
-<th style='padding:7px 8px;text-align:right;color:#3266ad;font-size:11px'>Raneen (ج)</th>
-<th style='padding:7px 8px;text-align:right;color:#d85a30;font-size:11px'>MP (ج)</th>
-<th style='padding:7px 8px;text-align:right;color:#555;font-size:11px'>الإجمالي (ج)</th>
-<th style='padding:7px 8px;color:#555;font-size:11px;min-width:160px'>Raneen vs MP</th>
+<tr style='border-bottom:1.5px solid #1F3864;position:sticky;top:0;background:#1F3864;z-index:2'>
+<th style='padding:7px 8px;text-align:left;color:white;font-size:11px'>#</th>
+<th style='padding:7px 8px;text-align:left;color:white;font-size:11px'>القسم</th>
+<th style='padding:7px 8px;text-align:left;color:white;font-size:11px'>Channel</th>
+<th style='padding:7px 8px;text-align:right;color:#85b7eb;font-size:11px'>Raneen (ج)</th>
+<th style='padding:7px 8px;text-align:right;color:#f0997b;font-size:11px'>MP (ج)</th>
+<th style='padding:7px 8px;text-align:right;color:white;font-size:11px'>الإجمالي (ج)</th>
+<th style='padding:7px 8px;color:white;font-size:11px;min-width:160px'>Raneen vs MP</th>
 </tr>"""
 for i, (_, row) in enumerate(cat_ch.iterrows(), 1):
     tot = row["Total"] if row["Total"] > 0 else 1
@@ -396,12 +438,11 @@ for i, (_, row) in enumerate(cat_ch.iterrows(), 1):
     ch = row["Channel"]
     ch_color = "#3266ad" if ch=="Raneen Only" else "#d85a30" if ch=="MP Only" else "#2a9e75"
     ch_bg    = "#e6f1fb" if ch=="Raneen Only" else "#fcebeb" if ch=="MP Only" else "#e1f5ee"
-    # Split bar: raneen blue, mp orange
     split_bar = f"""<div style='display:flex;height:8px;border-radius:4px;overflow:hidden;width:{bar_w:.0f}%;min-width:4px'>
 <div style='width:{r_pct:.0f}%;background:#3266ad'></div>
 <div style='width:{m_pct:.0f}%;background:#d85a30'></div>
 </div>
-<div style='font-size:10px;color:#aaa;margin-top:2px'>{r_pct:.0f}% Raneen · {m_pct:.0f}% MP</div>"""
+<div style='font-size:10px;color:#aaa;margin-top:2px'><b>{r_pct:.0f}%</b> Raneen · <b>{m_pct:.0f}%</b> MP</div>"""
     cat_html += f"""<tr style='border-bottom:.5px solid #f0f0f0'>
 <td style='padding:6px 8px;color:#aaa'>{i}</td>
 <td style='padding:6px 8px;font-weight:{"500" if i<=5 else "400"}'>{row["Attribute Set"]}</td>
@@ -424,18 +465,26 @@ if not pc.empty:
     selected_cat = st.selectbox("فلتر بالقسم", cats_available, key="pc_cat")
     pc_show = pc if selected_cat=="الكل" else pc[pc["Category"]==selected_cat]
     pc_show = pc_show.sort_values(["# Changes","SKU"], ascending=[False,True])
+
+    top15_skus = pc_show.drop_duplicates("SKU")["SKU"].head(15).tolist()
+    pc_show = pc_show[pc_show["SKU"].isin(top15_skus)]
+
     n_prods = pc_show["SKU"].nunique()
-    st.caption(f"{n_prods} منتج · {len(pc_show)} تغيير")
-    # Build grouped HTML table - product name appears once, changes listed below
+    _pc_col1, _pc_col2 = st.columns([3,1])
+    with _pc_col1:
+        st.caption(f"عرض أعلى {n_prods} منتج (الأكثر تغييراً) · {len(pc_show)} تغيير")
+    with _pc_col2:
+        st.download_button("⬇ تصدير Excel", to_excel(pc_show), "تغييرات_السعر.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     pc_show = pc_show.copy()
     pc_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
-<tr style='border-bottom:1.5px solid #e0e0e0;background:var(--color-background-secondary,#f8f9fa)'>
-<th style='padding:7px 10px;text-align:left;color:#555;font-size:11px;width:30%'>المنتج</th>
-<th style='padding:7px 10px;text-align:left;color:#555;font-size:11px;width:12%'>التاريخ</th>
-<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>قبل (ج)</th>
-<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>بعد (ج)</th>
-<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>الفرق</th>
-<th style='padding:7px 10px;text-align:center;color:#555;font-size:11px'># تغييرات</th>
+<tr style='border-bottom:1.5px solid #1F3864;background:#1F3864'>
+<th style='padding:7px 10px;text-align:left;color:white;font-size:11px;width:30%'>المنتج</th>
+<th style='padding:7px 10px;text-align:left;color:white;font-size:11px;width:12%'>التاريخ</th>
+<th style='padding:7px 10px;text-align:right;color:#b5d4f4;font-size:11px'>قبل (ج)</th>
+<th style='padding:7px 10px;text-align:right;color:#b5d4f4;font-size:11px'>بعد (ج)</th>
+<th style='padding:7px 10px;text-align:right;color:white;font-size:11px'>الفرق</th>
+<th style='padding:7px 10px;text-align:right;color:#9fe1cb;font-size:11px'>كمية اليوم</th>
+<th style='padding:7px 10px;text-align:center;color:white;font-size:11px'># تغييرات</th>
 </tr>"""
     last_sku = None
     for _, row in pc_show.iterrows():
@@ -455,12 +504,14 @@ if not pc.empty:
         change_val = row["Change"]
         chg_color = "#2a9e75" if change_val > 0 else "#d85a30"
         chg_str   = f'+{change_val:,.0f}' if change_val > 0 else f'{change_val:,.0f}'
+        qty_day   = int(row.get("Qty on Day", 0))
         pc_html += f"""<tr style='border-bottom:.5px solid #eee'>
 <td style='padding:5px 10px;color:var(--color-text-tertiary,#aaa);font-size:11px;padding-right:20px'>↳</td>
 <td style='padding:5px 10px;color:#555'>{row["Date"]}</td>
 <td style='padding:5px 10px;text-align:right;color:#555'>{row["Price Before"]:,.0f}</td>
 <td style='padding:5px 10px;text-align:right;font-weight:500'>{row["Price After"]:,.0f}</td>
 <td style='padding:5px 10px;text-align:right;font-weight:600;color:{chg_color}'>{chg_str}</td>
+<td style='padding:5px 10px;text-align:right;font-weight:600;color:#533ab7'>{qty_day:,}</td>
 <td></td>
 </tr>"""
     pc_html += "</table>"
@@ -486,51 +537,107 @@ st.plotly_chart(fig_line, use_container_width=True)
 # ── TOP PRODUCTS with heatbar ────────────────────────────────────────────────
 st.markdown('<p class="section-title">أعلى المنتجات طلبًا</p>', unsafe_allow_html=True)
 
-top_prod = df.groupby("Name").agg(
+_col_tp1, _col_tp2, _col_tp3 = st.columns([1,1,1])
+with _col_tp1:
+    _all_cats_tp = ["كل الأقسام"] + sorted(df["Attribute Set"].dropna().unique().tolist())
+    _sel_cat_tp = st.selectbox("فلتر بالقسم", _all_cats_tp, key="tp_cat_filter", label_visibility="collapsed")
+with _col_tp2:
+    _max_days_tp = len(days_sorted)
+    _days_options = ["كل الأيام"] + [str(d) for d in range(1, _max_days_tp + 1)]
+    _sel_days_tp = st.selectbox(
+        "فلتر بعدد أيام النشاط (على الأقل)",
+        _days_options, key="tp_days_filter", label_visibility="collapsed"
+    )
+with _col_tp3:
+    _perf_options = ["كل المنتجات", "⭐ ممتاز (90%+)", "✅ جيد (80–90%)", "🔶 متوسط (70–80%)", "🔴 ضعيف (أقل من 70%)"]
+    _sel_perf_tp = st.selectbox("فلتر بمعيار الأداء", _perf_options, key="tp_perf_filter", label_visibility="collapsed")
+
+_df_tp = df.copy()
+if _sel_cat_tp != "كل الأقسام":
+    _df_tp = _df_tp[_df_tp["Attribute Set"] == _sel_cat_tp]
+
+top_prod = _df_tp.groupby("Name").agg(
     Qty=("Qty Ordered","sum"),
     Revenue=("Value After Discounts","sum"),
     Days=("Day","nunique")
-).sort_values("Qty", ascending=False).head(30).reset_index()
+).sort_values("Qty", ascending=False)
 
-max_qty_p = top_prod["Qty"].max()
-max_rev_p = top_prod["Revenue"].max()
+if _sel_days_tp != "كل الأيام":
+    _min_days = int(_sel_days_tp)
+    top_prod = top_prod[top_prod["Days"] >= _min_days]
+
 total_d = len(days_sorted)
+top_prod["Pct"] = (top_prod["Days"] / total_d * 100).round(1) if total_d > 0 else 0
+
+if _sel_perf_tp == "⭐ ممتاز (90%+)":
+    top_prod = top_prod[top_prod["Pct"] >= 90]
+elif _sel_perf_tp == "✅ جيد (80–90%)":
+    top_prod = top_prod[(top_prod["Pct"] >= 80) & (top_prod["Pct"] < 90)]
+elif _sel_perf_tp == "🔶 متوسط (70–80%)":
+    top_prod = top_prod[(top_prod["Pct"] >= 70) & (top_prod["Pct"] < 80)]
+elif _sel_perf_tp == "🔴 ضعيف (أقل من 70%)":
+    top_prod = top_prod[top_prod["Pct"] < 70]
+
+top_prod = top_prod.head(30).reset_index()
+
+def _perf_style(pct):
+    if pct >= 90:
+        return {"bg": "#e6f9f0", "color": "#0a7a4e", "badge_bg": "#0a7a4e", "label": "ممتاز ⭐"}
+    elif pct >= 80:
+        return {"bg": "#e8f4fd", "color": "#1a5fa8", "badge_bg": "#1a5fa8", "label": "جيد ✅"}
+    elif pct >= 70:
+        return {"bg": "#fff8e6", "color": "#9a6400", "badge_bg": "#ba7517", "label": "متوسط 🔶"}
+    else:
+        return {"bg": "#fdf0f0", "color": "#b91c1c", "badge_bg": "#d85a30", "label": "ضعيف 🔴"}
+
+max_qty_p = top_prod["Qty"].max() if len(top_prod) > 0 else 1
+max_rev_p = top_prod["Revenue"].max() if len(top_prod) > 0 else 1
 
 prod_rows = ""
 for idx_p, row_p in top_prod.iterrows():
     qty_w = int(row_p["Qty"] / max_qty_p * 80) if max_qty_p > 0 else 0
     rev_w = int(row_p["Revenue"] / max_rev_p * 80) if max_rev_p > 0 else 0
     days_act = int(row_p["Days"])
+    pct_val  = row_p["Pct"]
+    ps       = _perf_style(pct_val)
     heat_cells = "".join([
-        '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin:1px;background:%s"></span>' % ("#3266ad" if j < days_act else "#e0e0e0")
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin:1px;background:%s"></span>' % (ps["badge_bg"] if j < days_act else "#e0e0e0")
         for j in range(total_d)
     ])
     name_s = str(row_p["Name"])[:50] + ("..." if len(str(row_p["Name"])) > 50 else "")
+    pct_cell = (
+        f'<div style="background:{ps["bg"]};border-radius:6px;padding:3px 7px;display:inline-block;min-width:90px;text-align:center">'
+        f'<span style="font-weight:700;color:{ps["color"]};font-size:13px">{pct_val:.0f}%</span><br>'
+        f'<span style="font-size:10px;color:{ps["color"]};opacity:.85">{ps["label"]}</span>'
+        f'</div>'
+    )
     prod_rows += (
         '<tr style="border-bottom:.5px solid #f0f0f0">' +
         '<td style="padding:5px 8px;color:#aaa">' + str(idx_p+1) + '</td>' +
-        '<td style="padding:5px 8px;max-width:220px" title="' + str(row_p["Name"]) + '">' + name_s + '</td>' +
+        '<td style="padding:5px 8px;max-width:200px" title="' + str(row_p["Name"]) + '">' + name_s + '</td>' +
         '<td style="padding:5px 8px;text-align:right"><span style="font-weight:600">' + f'{int(row_p["Qty"]):,}' + '</span>' +
         '<div style="background:#e8f0fb;border-radius:2px;height:4px;margin-top:3px"><div style="width:' + str(qty_w) + '%;background:#3266ad;height:4px;border-radius:2px"></div></div></td>' +
         '<td style="padding:5px 8px;text-align:right">' + f'{row_p["Revenue"]:,.0f}' +
         '<div style="background:#fde8e0;border-radius:2px;height:4px;margin-top:3px"><div style="width:' + str(rev_w) + '%;background:#d85a30;height:4px;border-radius:2px"></div></div></td>' +
-        '<td style="padding:5px 8px">' + heat_cells + '<span style="font-size:10px;color:#aaa;margin-right:4px">' + str(days_act) + '/' + str(total_d) + '</span></td></tr>'
+        '<td style="padding:5px 8px">' + heat_cells + '<span style="font-size:10px;color:#aaa;margin-right:4px">' + str(days_act) + '/' + str(total_d) + '</span></td>' +
+        '<td style="padding:5px 8px;text-align:center">' + pct_cell + '</td></tr>'
     )
 
 prod_html = (
     '<div style="max-height:500px;overflow-y:auto">' +
     '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-    '<tr style="border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white">' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">المنتج</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الكمية</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
-    '<th style="padding:7px 8px;color:#555;font-size:11px">أيام الظهور</th></tr>' +
+    '<tr style="border-bottom:1.5px solid #1F3864;position:sticky;top:0;background:#1F3864;z-index:2">' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">المنتج</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">الكمية</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#f0997b;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;color:white;font-size:11px">أيام الظهور</th>' +
+    '<th style="padding:7px 8px;text-align:center;color:#9fe1cb;font-size:11px">نسبة الأداء</th></tr>' +
     prod_rows + '</table></div>'
 )
 st.markdown(prod_html, unsafe_allow_html=True)
-
-# ── COUPONS ───────────────────────────────────────────────────────────────────
+_tp_dl = top_prod[["Name","Qty","Revenue","Days","Pct"]].rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
+st.download_button("⬇ تصدير Excel — أعلى المنتجات", to_excel(_tp_dl), "أعلى_المنتجات.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown('<p class="section-title">خصومات الكوبونات</p>', unsafe_allow_html=True)
 
 c_df = df[df["Coupon Code"].notna() & (df["Coupon Code"].astype(str).str.strip()!="")].copy()
@@ -639,23 +746,23 @@ for i2, (_, rr) in enumerate(region_df.iterrows(), 1):
         '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{rr["orders"]:,}' + '</td>' +
         '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{rr["aov"]:,.0f}' + '</td>' +
         '<td style="padding:5px 8px;min-width:120px"><div style="background:#eee;border-radius:3px;height:6px"><div style="width:' + str(bw_r) + '%;background:' + col_r2 + ';height:6px;border-radius:3px"></div></div>' +
-        '<span style="font-size:10px;color:#aaa">' + str(rr["pct"]) + '%</span></td></tr>'
+        '<span style="font-size:10px;font-weight:700;color:#555">' + str(rr["pct"]) + '%</span></td></tr>'
     )
 reg_html = (
     '<div style="max-height:520px;overflow-y:auto">' +
     '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-    '<tr style="border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white">' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">المحافظة</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الأوردرات</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">AOV (ج)</th>' +
-    '<th style="padding:7px 8px;color:#555;font-size:11px;min-width:120px">النسبة</th></tr>' +
+    '<tr style="border-bottom:1.5px solid #1F3864;position:sticky;top:0;background:#1F3864">' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">المحافظة</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">الأوردرات</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">AOV (ج)</th>' +
+    '<th style="padding:7px 8px;color:white;font-size:11px;min-width:120px">النسبة</th></tr>' +
     reg_rows + '</table></div>'
 )
 st.markdown(reg_html, unsafe_allow_html=True)
-
-# ── PAYMENT METHOD ─────────────────────────────────────────────────────────────
+_reg_dl = region_df[["Region","revenue","orders","aov","pct"]].rename(columns={"Region":"المحافظة","revenue":"المبيعات (ج)","orders":"الأوردرات","aov":"AOV (ج)","pct":"النسبة %"})
+st.download_button("⬇ تصدير Excel — المحافظات", to_excel(_reg_dl), "مبيعات_المحافظات.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown('<p class="section-title">طرق الدفع</p>', unsafe_allow_html=True)
 
 pay_df = df.groupby("Payment Method").agg(
@@ -713,20 +820,20 @@ for i3, (_, pr) in enumerate(pay_df.iterrows(), 1):
         '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{pr["orders"]:,}' + '</td>' +
         '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{pr["aov"]:,.0f}' + '</td>' +
         '<td style="padding:5px 8px;min-width:120px"><div style="background:#eee;border-radius:3px;height:6px"><div style="width:' + str(bw_p) + '%;background:' + col_p2 + ';height:6px;border-radius:3px"></div></div>' +
-        '<span style="font-size:10px;color:#aaa">' + str(pr["pct"]) + '%</span></td></tr>'
+        '<span style="font-size:10px;font-weight:700;color:#555">' + str(pr["pct"]) + '%</span></td></tr>'
     )
 pay_html = (
     '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-    '<tr style="border-bottom:1.5px solid #e0e0e0">' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">طريقة الدفع</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الأوردرات</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">AOV (ج)</th>' +
-    '<th style="padding:7px 8px;color:#555;font-size:11px;min-width:120px">النسبة</th></tr>' +
+    '<tr style="border-bottom:1.5px solid #1F3864;background:#1F3864">' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">طريقة الدفع</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">الأوردرات</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">AOV (ج)</th>' +
+    '<th style="padding:7px 8px;color:white;font-size:11px;min-width:120px">النسبة</th></tr>' +
     pay_rows + '</table>'
 )
 st.markdown(pay_html, unsafe_allow_html=True)
-
-st.markdown("---")
+_pay_dl = pay_df[["Payment Method","revenue","orders","aov","pct"]].rename(columns={"Payment Method":"طريقة الدفع","revenue":"المبيعات (ج)","orders":"الأوردرات","aov":"AOV (ج)","pct":"النسبة %"})
+st.download_button("⬇ تصدير Excel — طرق الدفع", to_excel(_pay_dl), "طرق_الدفع.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown(f"<p style='text-align:center;color:#aaa;font-size:11px'>Raneen Analytics · {date_min} → {date_max}</p>", unsafe_allow_html=True)
