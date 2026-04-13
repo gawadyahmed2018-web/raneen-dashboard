@@ -1,67 +1,4 @@
- import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-
-st.set_page_config(page_title="Raneen Sales Dashboard", layout="wide", page_icon="📊")
-
-st.markdown("""
-<style>
-[data-testid="stAppViewContainer"] { background: #f8f9fa; }
-[data-testid="stSidebar"] { background: #1F3864; }
-[data-testid="stSidebar"] * { color: white !important; }
-.metric-card {
-    background: white; border-radius: 10px; padding: 1rem 1.25rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: .5rem;
-}
-.metric-label { font-size: 12px; color: #888; margin: 0 0 4px; }
-.metric-value { font-size: 22px; font-weight: 600; color: #1F3864; margin: 0; }
-.metric-sub { font-size: 11px; color: #aaa; margin: 2px 0 0; }
-.section-title {
-    fon…
-[12:22 ص، 2026/4/13] Ahmed: import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-
-st.set_page_config(page_title="Raneen Sales Dashboard", layout="wide", page_icon="📊")
-
-st.markdown("""
-<style>
-[data-testid="stAppViewContainer"] { background: #f8f9fa; }
-[data-testid="stSidebar"] { background: #1F3864; }
-[data-testid="stSidebar"] * { color: white !important; }
-.metric-card {
-    background: white; border-radius: 10px; padding: 1rem 1.25rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: .5rem;
-}
-.metric-label { font-size: 12px; color: #888; margin: 0 0 4px; }
-.metric-value { font-size: 22px; font-weight: 600; color: #1F3864; margin: 0; }
-.metric-sub { font-size: 11px; color: #aaa; margin: 2px 0 0; }
-.section-title {
-    fon…
-[2:33 ص، 2026/4/13] Ahmed: import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-
-st.set_page_config(page_title="Raneen Sales Dashboard", layout="wide", page_icon="📊")
-
-st.markdown("""
-<style>
-[data-testid="stAppViewContainer"] { background: #f8f9fa; }
-[data-testid="stSidebar"] { background: #1F3864; }
-[data-testid="stSidebar"] * { color: white !important; }
-.metric-card {
-    background: white; border-radius: 10px; padding: 1rem 1.25rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: .5rem;
-}
-.metric-label { font-size: 12px; color: #888; margin: 0 0 4px; }
-.metric-value { font-size: 22px; font-weight: 600; color: #1F3864; margin: 0; }
-.metric-sub { font-size: 11px; color: #aaa; margin: 2px 0 0; }
-.section-title {
-    fon…
-[3:22 ص، 2026/4/13] Ahmed: import streamlit as st
+import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -209,7 +146,7 @@ with st.sidebar:
             uploaded.seek(0)
 
     st.markdown("---")
-    st.markdown("*كيفية الاستخدام:*")
+    st.markdown("**كيفية الاستخدام:**")
     st.markdown("1. نزّل الشيت من ماجينتو\n2. ارفعه هنا\n3. الداشبورد بيظهر فوراً")
 
 # ── MAIN ─────────────────────────────────────────────────────────────────────
@@ -263,7 +200,7 @@ with col_dr3:
     st.markdown("")
     st.markdown("")
     n_days_selected = all_days.index(date_to) - all_days.index(date_from) + 1
-    st.info(f"📅 *{date_from}  →  {date_to}*  ·  {n_days_selected} يوم")
+    st.info(f"📅 **{date_from}  →  {date_to}**  ·  {n_days_selected} يوم")
 
 st.markdown("---")
 
