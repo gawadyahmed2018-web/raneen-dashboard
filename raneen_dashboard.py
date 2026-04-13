@@ -243,24 +243,40 @@ st.markdown("---")
 
 col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
 with col_dr1:
-    date_from = st.selectbox("من يوم", options=all_days, index=0, key="date_from")
+    date_from = st.date_input(
+        "من يوم",
+        value=pd.to_datetime(all_days[0] + " 2026").date(),
+        min_value=pd.to_datetime(all_days[0] + " 2026").date(),
+        max_value=pd.to_datetime(all_days[-1] + " 2026").date(),
+        key="date_from",
+        format="DD/MM/YYYY"
+    )
 with col_dr2:
-    from_idx = all_days.index(date_from)
-    days_to_options = all_days[from_idx:]
-    # Always default to last available day
-    default_to_idx = len(days_to_options) - 1
-    date_to = st.selectbox("إلى يوم", options=days_to_options, index=default_to_idx, key="date_to")
+    date_to = st.date_input(
+        "إلى يوم",
+        value=pd.to_datetime(all_days[-1] + " 2026").date(),
+        min_value=pd.to_datetime(all_days[0] + " 2026").date(),
+        max_value=pd.to_datetime(all_days[-1] + " 2026").date(),
+        key="date_to",
+        format="DD/MM/YYYY"
+    )
+    if date_to < date_from:
+        date_to = date_from
 with col_dr3:
     st.markdown("")
     st.markdown("")
-    n_days_selected = all_days.index(date_to) - all_days.index(date_from) + 1
-    st.info(f"📅 **{date_from}  →  {date_to}**  ·  {n_days_selected} يوم")
+    n_days_selected = (date_to - date_from).days + 1
+    st.info(f"📅 **{date_from.strftime('%b %d')}  →  {date_to.strftime('%b %d')}**  ·  {n_days_selected} يوم")
 
 st.markdown("---")
 
 # Filter dataframe based on selected date range
-days_range = all_days[all_days.index(date_from): all_days.index(date_to)+1]
-df = df_full[df_full["Day"].isin(days_range)].copy()
+df = df_full[
+    (df_full["Purchase Date"].dt.date >= date_from) &
+    (df_full["Purchase Date"].dt.date <= date_to)
+].copy()
+days_sorted = sorted(df["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
+days_range  = days_sorted
 
 date_min = df["Purchase Date"].dt.date.min()
 date_max = df["Purchase Date"].dt.date.max()
@@ -405,7 +421,6 @@ with _dl_col1:
 with _dl_col2:
     _cat_csv = cat_ch[["Attribute Set","Channel","raneen","MP","Total"]].rename(columns={"Attribute Set":"القسم","raneen":"Raneen (ج)","MP":"MP (ج)","Total":"الإجمالي (ج)","Channel":"Channel"})
     st.download_button("⬇ تصدير Excel", to_excel(_cat_csv), "مبيعات_الأقسام.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-
 fig_cat = go.Figure()
 chart_data = cat_ch.head(12)
 fig_cat.add_trace(go.Bar(name="Raneen", y=chart_data["Attribute Set"], x=chart_data["raneen"],
@@ -475,10 +490,11 @@ if not pc.empty:
     with _pc_col1:
         st.caption(f"عرض أعلى {n_prods} منتج (الأكثر تغييراً) · {len(pc_show)} تغيير")
     with _pc_col2:
-        st.download_button("⬇ تصدير Excel", to_excel(pc_show), "تغييرات_السعر.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        # تصدير كل المنتجات بغض النظر عن الفلتر
+        st.download_button("⬇ تصدير Excel", to_excel(pc), "تغييرات_السعر.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     pc_show = pc_show.copy()
-    pc_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
-<tr style='border-bottom:1.5px solid #1F3864;background:#1F3864'>
+    pc_html = """<div style='max-height:480px;overflow-y:auto'><table style='width:100%;border-collapse:collapse;font-size:12px'>
+<thead><tr style='border-bottom:1.5px solid #1F3864;background:#1F3864;position:sticky;top:0;z-index:2'>
 <th style='padding:7px 10px;text-align:left;color:white;font-size:11px;width:30%'>المنتج</th>
 <th style='padding:7px 10px;text-align:left;color:white;font-size:11px;width:12%'>التاريخ</th>
 <th style='padding:7px 10px;text-align:right;color:#b5d4f4;font-size:11px'>قبل (ج)</th>
@@ -486,7 +502,7 @@ if not pc.empty:
 <th style='padding:7px 10px;text-align:right;color:white;font-size:11px'>الفرق</th>
 <th style='padding:7px 10px;text-align:right;color:#9fe1cb;font-size:11px'>كمية اليوم</th>
 <th style='padding:7px 10px;text-align:center;color:white;font-size:11px'># تغييرات</th>
-</tr>"""
+</tr></thead><tbody>"""
     last_sku = None
     for _, row in pc_show.iterrows():
         is_new = row["SKU"] != last_sku
@@ -515,7 +531,7 @@ if not pc.empty:
 <td style='padding:5px 10px;text-align:right;font-weight:600;color:#533ab7'>{qty_day:,}</td>
 <td></td>
 </tr>"""
-    pc_html += "</table>"
+    pc_html += "</tbody></table></div>"
     st.markdown(pc_html, unsafe_allow_html=True)
 else:
     st.info("لا توجد منتجات بأكثر من 3 تغييرات في السعر")
@@ -558,30 +574,32 @@ _df_tp = df.copy()
 if _sel_cat_tp != "كل الأقسام":
     _df_tp = _df_tp[_df_tp["Attribute Set"] == _sel_cat_tp]
 
-top_prod = _df_tp.groupby("Name").agg(
+top_prod_all = _df_tp.groupby("Name").agg(
     Qty=("Qty Ordered","sum"),
     Revenue=("Value After Discounts","sum"),
     Days=("Day","nunique")
 ).sort_values("Qty", ascending=False)
 
+total_d = len(days_sorted)
+top_prod_all["Pct"] = (top_prod_all["Days"] / total_d * 100).round(1) if total_d > 0 else 0
+
 if _sel_days_tp != "كل الأيام":
     _min_days = int(_sel_days_tp)
-    top_prod = top_prod[top_prod["Days"] >= _min_days]
-
-total_d = len(days_sorted)
-top_prod["Pct"] = (top_prod["Days"] / total_d * 100).round(1) if total_d > 0 else 0
+    top_prod_all = top_prod_all[top_prod_all["Days"] >= _min_days]
 
 # فلتر الأداء
 if _sel_perf_tp == "⭐ ممتاز (90%+)":
-    top_prod = top_prod[top_prod["Pct"] >= 90]
+    top_prod_all = top_prod_all[top_prod_all["Pct"] >= 90]
 elif _sel_perf_tp == "✅ جيد (80–90%)":
-    top_prod = top_prod[(top_prod["Pct"] >= 80) & (top_prod["Pct"] < 90)]
+    top_prod_all = top_prod_all[(top_prod_all["Pct"] >= 80) & (top_prod_all["Pct"] < 90)]
 elif _sel_perf_tp == "🔶 متوسط (70–80%)":
-    top_prod = top_prod[(top_prod["Pct"] >= 70) & (top_prod["Pct"] < 80)]
+    top_prod_all = top_prod_all[(top_prod_all["Pct"] >= 70) & (top_prod_all["Pct"] < 80)]
 elif _sel_perf_tp == "🔴 ضعيف (أقل من 70%)":
-    top_prod = top_prod[top_prod["Pct"] < 70]
+    top_prod_all = top_prod_all[top_prod_all["Pct"] < 70]
 
-top_prod = top_prod.head(30).reset_index()
+# top_prod_all = كل النتايج بعد الفلاتر (للتصدير)
+# top_prod     = أول 30 بس (للعرض)
+top_prod = top_prod_all.head(30).reset_index()
 
 def _perf_style(pct):
     if pct >= 90:
@@ -639,7 +657,7 @@ prod_html = (
     prod_rows + '</table></div>'
 )
 st.markdown(prod_html, unsafe_allow_html=True)
-_tp_dl = top_prod[["Name","Qty","Revenue","Days","Pct"]].rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
+_tp_dl = top_prod_all.reset_index()[["Name","Qty","Revenue","Days","Pct"]].rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
 st.download_button("⬇ تصدير Excel — أعلى المنتجات", to_excel(_tp_dl), "أعلى_المنتجات.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown('<p class="section-title">خصومات الكوبونات</p>', unsafe_allow_html=True)
 
