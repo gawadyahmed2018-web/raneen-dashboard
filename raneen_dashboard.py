@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+import io
 
 st.set_page_config(page_title="Raneen Sales Dashboard", layout="wide", page_icon="📊")
 
@@ -23,8 +24,28 @@ st.markdown("""
     border-bottom: 2px solid #1F3864; padding-bottom: 6px;
     margin: 2rem 0 1rem;
 }
+[data-testid="stDownloadButton"] > button {
+    background: #1F3864 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    padding: 6px 14px !important;
+    transition: background .2s !important;
+}
+[data-testid="stDownloadButton"] > button:hover {
+    background: #2a4f8a !important;
+    color: white !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
+def to_excel(df_export):
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df_export.to_excel(writer, index=False, sheet_name="Sheet1")
+    return buf.getvalue()
 
 COLORS = {"raneen": "#3266ad", "MP": "#d85a30"}
 PAL = ["#3266ad","#185fa5","#378add","#85b7eb","#d85a30","#ba7517","#2a9e75","#533ab7","#993556","#2c2c2a"]
@@ -350,7 +371,7 @@ with _dl_col1:
     st.caption(f"عرض {len(cat_ch)} من {len(cat_all)} قسم — الشارت بيعرض أعلى 12 من النتايج")
 with _dl_col2:
     _cat_csv = cat_ch[["Attribute Set","Channel","raneen","MP","Total"]].rename(columns={"Attribute Set":"القسم","raneen":"Raneen (ج)","MP":"MP (ج)","Total":"الإجمالي (ج)","Channel":"Channel"})
-    st.download_button("⬇ تحميل CSV", _cat_csv.to_csv(index=False, encoding="utf-8-sig"), "مبيعات_الأقسام.csv", "text/csv", use_container_width=True)
+    st.download_button("⬇ تصدير Excel", to_excel(_cat_csv), "مبيعات_الأقسام.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
 fig_cat = go.Figure()
 chart_data = cat_ch.head(12)
@@ -416,7 +437,7 @@ if not pc.empty:
     with _pc_col1:
         st.caption(f"{n_prods} منتج · {len(pc_show)} تغيير")
     with _pc_col2:
-        st.download_button("⬇ تحميل CSV", pc_show.to_csv(index=False, encoding="utf-8-sig"), "تغييرات_السعر.csv", "text/csv", use_container_width=True)
+        st.download_button("⬇ تصدير Excel", to_excel(pc_show), "تغييرات_السعر.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     # Build grouped HTML table - product name appears once, changes listed below
     pc_show = pc_show.copy()
     pc_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
@@ -582,7 +603,7 @@ prod_html = (
 )
 st.markdown(prod_html, unsafe_allow_html=True)
 _tp_dl = top_prod[["Name","Qty","Revenue","Days","Pct"]].rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
-st.download_button("⬇ تحميل CSV — أعلى المنتجات", _tp_dl.to_csv(index=False, encoding="utf-8-sig"), "أعلى_المنتجات.csv", "text/csv")
+st.download_button("⬇ تصدير Excel — أعلى المنتجات", to_excel(_tp_dl), "أعلى_المنتجات.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown('<p class="section-title">خصومات الكوبونات</p>', unsafe_allow_html=True)
 
 c_df = df[df["Coupon Code"].notna() & (df["Coupon Code"].astype(str).str.strip()!="")].copy()
@@ -707,7 +728,7 @@ reg_html = (
 )
 st.markdown(reg_html, unsafe_allow_html=True)
 _reg_dl = region_df[["Region","revenue","orders","aov","pct"]].rename(columns={"Region":"المحافظة","revenue":"المبيعات (ج)","orders":"الأوردرات","aov":"AOV (ج)","pct":"النسبة %"})
-st.download_button("⬇ تحميل CSV — المحافظات", _reg_dl.to_csv(index=False, encoding="utf-8-sig"), "مبيعات_المحافظات.csv", "text/csv")
+st.download_button("⬇ تصدير Excel — المحافظات", to_excel(_reg_dl), "مبيعات_المحافظات.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown('<p class="section-title">طرق الدفع</p>', unsafe_allow_html=True)
 
 pay_df = df.groupby("Payment Method").agg(
@@ -780,5 +801,5 @@ pay_html = (
 )
 st.markdown(pay_html, unsafe_allow_html=True)
 _pay_dl = pay_df[["Payment Method","revenue","orders","aov","pct"]].rename(columns={"Payment Method":"طريقة الدفع","revenue":"المبيعات (ج)","orders":"الأوردرات","aov":"AOV (ج)","pct":"النسبة %"})
-st.download_button("⬇ تحميل CSV — طرق الدفع", _pay_dl.to_csv(index=False, encoding="utf-8-sig"), "طرق_الدفع.csv", "text/csv")
+st.download_button("⬇ تصدير Excel — طرق الدفع", to_excel(_pay_dl), "طرق_الدفع.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown(f"<p style='text-align:center;color:#aaa;font-size:11px'>Raneen Analytics · {date_min} → {date_max}</p>", unsafe_allow_html=True)
