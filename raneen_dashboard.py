@@ -120,43 +120,9 @@ def get_price_changes(df):
 # ── DEFAULT DATA URL ─────────────────────────────────────────────────────────
 DEFAULT_DATA_URL = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/raneen_default_data.csv"
 
-SPENDING_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTvCm7gn0G_PlQTKLV-gIRkuCXbfkQ956kNrK6jmUdgqRfL5LfI6x5IhJKs6l0a0g/pub?gid=1982732416&single=true&output=csv"
-
 @st.cache_data(ttl=3600)
 def load_default():
     return pd.read_csv(DEFAULT_DATA_URL)
-
-@st.cache_data(ttl=900)
-def load_spending():
-    try:
-        # الشيت فيه صفوف header مدموجة — نقرأ كل الصفوف ونلاقي الـ header الصح
-        raw = pd.read_csv(SPENDING_CSV_URL, header=None)
-        # الـ header الحقيقي هو الصف اللي فيه كلمة "Date"
-        header_row = None
-        for idx, row in raw.iterrows():
-            if any(str(v).strip() == "Date" for v in row.values):
-                header_row = idx
-                break
-        if header_row is None:
-            return pd.DataFrame()
-        df_sp = pd.read_csv(SPENDING_CSV_URL, header=header_row, skiprows=range(1, header_row) if header_row > 0 else None)
-        # نحتفظ بعمود Date و Total Spend بس
-        df_sp = df_sp[["Date","Total Spend"]].copy()
-        df_sp = df_sp.dropna(subset=["Date","Total Spend"])
-        # نشيل أي صفوف مش فيها تاريخ حقيقي (صفوف الـ summary زي "Jan 2026 | Total...")
-        df_sp = df_sp[df_sp["Date"].astype(str).str.match(r"^\d{2}-[A-Za-z]{3}$")]
-        # نحول التاريخ — الشكل "01-Jan" → نضيف السنة من الـ context
-        df_sp["Date_parsed"] = pd.to_datetime(df_sp["Date"].astype(str) + "-2026", format="%d-%b-%Y", errors="coerce")
-        # نحول Total Spend لرقم
-        df_sp["Total Spend"] = pd.to_numeric(
-            df_sp["Total Spend"].astype(str).str.replace(",","",regex=False).str.replace(" ","",regex=False),
-            errors="coerce"
-        ).fillna(0)
-        df_sp = df_sp.dropna(subset=["Date_parsed"])
-        df_sp = df_sp.sort_values("Date_parsed").reset_index(drop=True)
-        return df_sp[["Date_parsed","Total Spend"]]
-    except Exception:
-        return pd.DataFrame()
 
 # ── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -399,45 +365,6 @@ with c8:
     st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">قطع Raneen</p><p class="metric-value" style="color:#3266ad">{raneen_qty:,}</p><p class="metric-sub">{raneen_qty/total_qty*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
 with c9:
     st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">قطع MP</p><p class="metric-value" style="color:#d85a30">{mp_qty:,}</p><p class="metric-sub">{mp_qty/total_qty*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
-
-# ── METRICS ROW 4: Spending — synced with date filter ─────────────────────────
-df_spend = load_spending()
-if not df_spend.empty:
-    sp_filtered = df_spend[
-        (df_spend["Date_parsed"].dt.date >= date_from) &
-        (df_spend["Date_parsed"].dt.date <= date_to)
-    ]
-    total_spend   = sp_filtered["Total Spend"].sum()
-    spend_pct     = (total_spend / total * 100) if total > 0 else 0
-    roas          = (total / total_spend) if total_spend > 0 else 0
-
-    st.markdown('<p class="section-title">الإنفاق التسويقي</p>', unsafe_allow_html=True)
-    cs1, cs2, cs3 = st.columns(3)
-    with cs1:
-        st.markdown(
-            f'<div class="metric-card" style="border-left:4px solid #2a9e75">'
-            f'<p class="metric-label">إجمالي الإنفاق</p>'
-            f'<p class="metric-value" style="color:#2a9e75">{total_spend/1e6:.2f}M ج</p>'
-            f'<p class="metric-sub">{date_from.strftime("%b %d")} → {date_to.strftime("%b %d")} · {len(sp_filtered)} يوم</p>'
-            f'</div>', unsafe_allow_html=True)
-    with cs2:
-        spend_color = "#2a9e75" if spend_pct <= 5 else "#ba7517" if spend_pct <= 10 else "#d85a30"
-        st.markdown(
-            f'<div class="metric-card" style="border-left:4px solid {spend_color}">'
-            f'<p class="metric-label">نسبة الإنفاق من المبيعات</p>'
-            f'<p class="metric-value" style="color:{spend_color}"><b>{spend_pct:.1f}%</b></p>'
-            f'<p class="metric-sub">Spend ÷ Revenue</p>'
-            f'</div>', unsafe_allow_html=True)
-    with cs3:
-        roas_color = "#2a9e75" if roas >= 10 else "#ba7517" if roas >= 5 else "#d85a30"
-        st.markdown(
-            f'<div class="metric-card" style="border-left:4px solid {roas_color}">'
-            f'<p class="metric-label">ROAS</p>'
-            f'<p class="metric-value" style="color:{roas_color}"><b>{roas:.1f}x</b></p>'
-            f'<p class="metric-sub">مبيعات ÷ إنفاق</p>'
-            f'</div>', unsafe_allow_html=True)
-else:
-    st.info("⚠️ تعذّر تحميل بيانات الإنفاق — تحقق من الـ link")
 
 # ── RANEEN VS MP ──────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">Raneen vs MP — مبيعات يومية</p>', unsafe_allow_html=True)
