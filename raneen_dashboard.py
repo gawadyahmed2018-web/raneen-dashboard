@@ -228,8 +228,17 @@ all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026
 all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
 
 # ── DATE RANGE FILTER ────────────────────────────────────────────────────────
-st.markdown("# 📊 Raneen Sales Dashboard")
-st.markdown('<p style="background:linear-gradient(90deg,#1F3864,#3266ad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:19px;font-weight:800;margin-top:-8px;letter-spacing:.02em">✦ Created by Ahmed Khamis</p>', unsafe_allow_html=True)
+_hcol1, _hcol2 = st.columns([5, 1])
+with _hcol1:
+    st.markdown("# 📊 Raneen Sales Dashboard")
+    st.markdown('<p style="background:linear-gradient(90deg,#1F3864,#3266ad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:19px;font-weight:800;margin-top:-8px;letter-spacing:.02em">✦ Created by Ahmed Khamis</p>', unsafe_allow_html=True)
+with _hcol2:
+    try:
+        from PIL import Image
+        _logo = Image.open("/mnt/user-data/outputs/raneen_logo.jpg")
+        st.image(_logo, width=110)
+    except Exception:
+        pass
 st.markdown("---")
 
 col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
