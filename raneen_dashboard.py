@@ -234,6 +234,58 @@ all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026
 all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
 
 # ── DATE RANGE FILTER ────────────────────────────────────────────────────────
+# ── STICKY HEADER ────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+.sticky-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 999;
+    background: #1F3864;
+    padding: .55rem 2rem .55rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+.sticky-header .title {
+    font-size: 18px;
+    font-weight: 800;
+    color: white;
+    margin: 0;
+    letter-spacing: .02em;
+}
+.sticky-header .sub {
+    font-size: 11px;
+    color: #85b7eb;
+    margin: 2px 0 0;
+}
+.sticky-header .date-badge {
+    background: rgba(255,255,255,.12);
+    border-radius: 8px;
+    padding: 5px 14px;
+    text-align: center;
+}
+.sticky-header .date-badge .d1 {
+    font-size: 11px;
+    color: #b5d4f4;
+    margin: 0;
+}
+.sticky-header .date-badge .d2 {
+    font-size: 13px;
+    font-weight: 700;
+    color: white;
+    margin: 0;
+}
+/* push page content below sticky header */
+[data-testid="stAppViewContainer"] > section > div:first-child {
+    padding-top: 64px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 _hcol1, _hcol2 = st.columns([5, 1])
 with _hcol1:
     st.markdown("# 📊 Raneen Sales Dashboard")
@@ -834,4 +886,17 @@ pay_html = (
 st.markdown(pay_html, unsafe_allow_html=True)
 _pay_dl = pay_df[["Payment Method","revenue","orders","aov","pct"]].rename(columns={"Payment Method":"طريقة الدفع","revenue":"المبيعات (ج)","orders":"الأوردرات","aov":"AOV (ج)","pct":"النسبة %"})
 st.download_button("⬇ تصدير Excel — طرق الدفع", to_excel(_pay_dl), "طرق_الدفع.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+# ── Render sticky header with actual date range ───────────────────────────
+st.markdown(f"""
+<div class="sticky-header">
+  <div>
+    <p class="title">📊 Raneen Sales Dashboard</p>
+    <p class="sub">✦ Created by Ahmed Khamis</p>
+  </div>
+  <div class="date-badge">
+    <p class="d1">الفترة المعروضة</p>
+    <p class="d2">{date_from.strftime("%b %d")} → {date_to.strftime("%b %d")}</p>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 st.markdown(f"<p style='text-align:center;color:#aaa;font-size:11px'>Raneen Analytics · {date_min} → {date_max}</p>", unsafe_allow_html=True)
