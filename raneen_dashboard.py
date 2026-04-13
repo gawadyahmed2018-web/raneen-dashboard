@@ -249,21 +249,18 @@ st.markdown("---")
 
 col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
 with col_dr1:
-    date_from = st.selectbox("من يوم", options=all_days, index=0, key="date_from")
+    date_from = st.date_input("من يوم", value=all_dates[0], min_value=all_dates[0], max_value=all_dates[-1], key="date_from")
 with col_dr2:
-    from_idx = all_days.index(date_from)
-    days_to_options = all_days[from_idx:]
-    default_to_idx = len(days_to_options) - 1
-    date_to = st.selectbox("إلى يوم", options=days_to_options, index=default_to_idx, key="date_to")
+    date_to = st.date_input("إلى يوم", value=all_dates[-1], min_value=all_dates[0], max_value=all_dates[-1], key="date_to")
 with col_dr3:
     st.markdown("")
     st.markdown("")
-    n_days_selected = all_days.index(date_to) - all_days.index(date_from) + 1
-    st.info(f"📅 **{date_from}  →  {date_to}**  ·  {n_days_selected} يوم")
+    n_days_selected = (date_to - date_from).days + 1
+    st.info(f"📅 **{date_from.strftime('%b %d')}  →  {date_to.strftime('%b %d')}**  ·  {n_days_selected} يوم")
 
 st.markdown("---")
 
-days_range = all_days[all_days.index(date_from): all_days.index(date_to)+1]
+days_range = [d for d in all_days if date_from <= pd.to_datetime(d+" 2026").date() <= date_to]
 df = df_full[df_full["Day"].isin(days_range)].copy()
 
 date_min = df["Purchase Date"].dt.date.min()
@@ -476,8 +473,8 @@ if not pc.empty:
     with _pc_col2:
         st.download_button("⬇ تصدير Excel", to_excel(pc_show), "تغييرات_السعر.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     pc_show = pc_show.copy()
-    pc_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
-<tr style='border-bottom:1.5px solid #1F3864;background:#1F3864'>
+    pc_html = """<div style='max-height:480px;overflow-y:auto'><table style='width:100%;border-collapse:collapse;font-size:12px'>
+<tr style='border-bottom:1.5px solid #1F3864;position:sticky;top:0;background:#1F3864;z-index:2'>
 <th style='padding:7px 10px;text-align:left;color:white;font-size:11px;width:30%'>المنتج</th>
 <th style='padding:7px 10px;text-align:left;color:white;font-size:11px;width:12%'>التاريخ</th>
 <th style='padding:7px 10px;text-align:right;color:#b5d4f4;font-size:11px'>قبل (ج)</th>
@@ -496,7 +493,7 @@ if not pc.empty:
             nc  = "#633806" if n>=7 else "#085041" if n>=6 else "#0c447c" if n>=5 else "#501313" if n>=4 else "#555"
             name_short = str(row["Product"])[:55] + ("..." if len(str(row["Product"]))>55 else "")
             pc_html += f"""<tr style='border-top:2px solid #d0d0d0;background:#fafafa'>
-<td colspan='5' style='padding:7px 10px;font-weight:600;font-size:12px;color:#1F3864'>{name_short}<br>
+<td colspan='6' style='padding:7px 10px;font-weight:600;font-size:12px;color:#1F3864'>{name_short}<br>
 <span style='font-family:monospace;font-size:10px;color:#888'>{row["SKU"]}</span>
 <span style='font-size:10px;color:#888;margin-right:6px'>· {row["Category"]}</span></td>
 <td style='padding:7px 10px;text-align:center'><span style='background:{nbg};color:{nc};padding:2px 7px;border-radius:8px;font-size:11px;font-weight:600'>{n}x</span></td>
@@ -506,7 +503,7 @@ if not pc.empty:
         chg_str   = f'+{change_val:,.0f}' if change_val > 0 else f'{change_val:,.0f}'
         qty_day   = int(row.get("Qty on Day", 0))
         pc_html += f"""<tr style='border-bottom:.5px solid #eee'>
-<td style='padding:5px 10px;color:var(--color-text-tertiary,#aaa);font-size:11px;padding-right:20px'>↳</td>
+<td style='padding:5px 10px;color:#aaa;font-size:11px'>↳</td>
 <td style='padding:5px 10px;color:#555'>{row["Date"]}</td>
 <td style='padding:5px 10px;text-align:right;color:#555'>{row["Price Before"]:,.0f}</td>
 <td style='padding:5px 10px;text-align:right;font-weight:500'>{row["Price After"]:,.0f}</td>
@@ -514,7 +511,7 @@ if not pc.empty:
 <td style='padding:5px 10px;text-align:right;font-weight:600;color:#533ab7'>{qty_day:,}</td>
 <td></td>
 </tr>"""
-    pc_html += "</table>"
+    pc_html += "</table></div>"
     st.markdown(pc_html, unsafe_allow_html=True)
 else:
     st.info("لا توجد منتجات بأكثر من 3 تغييرات في السعر")
@@ -578,7 +575,8 @@ elif _sel_perf_tp == "🔶 متوسط (70–80%)":
 elif _sel_perf_tp == "🔴 ضعيف (أقل من 70%)":
     top_prod = top_prod[top_prod["Pct"] < 70]
 
-top_prod = top_prod.head(30).reset_index()
+top_prod_all = top_prod.reset_index()  # كل المنتجات للتصدير
+top_prod = top_prod.head(30).reset_index()  # أول 30 للعرض
 
 def _perf_style(pct):
     if pct >= 90:
@@ -636,8 +634,8 @@ prod_html = (
     prod_rows + '</table></div>'
 )
 st.markdown(prod_html, unsafe_allow_html=True)
-_tp_dl = top_prod[["Name","Qty","Revenue","Days","Pct"]].rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
-st.download_button("⬇ تصدير Excel — أعلى المنتجات", to_excel(_tp_dl), "أعلى_المنتجات.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+_tp_dl = top_prod_all[["Name","Qty","Revenue","Days","Pct"]].rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
+st.download_button(f"⬇ تصدير Excel — {len(top_prod_all)} منتج", to_excel(_tp_dl), "أعلى_المنتجات.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown('<p class="section-title">خصومات الكوبونات</p>', unsafe_allow_html=True)
 
 c_df = df[df["Coupon Code"].notna() & (df["Coupon Code"].astype(str).str.strip()!="")].copy()
