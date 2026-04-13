@@ -24,6 +24,7 @@ st.markdown("""
     border-bottom: 2px solid #1F3864; padding-bottom: 6px;
     margin: 2rem 0 1rem;
 }
+/* ── Download buttons ── */
 [data-testid="stDownloadButton"] > button {
     background: #1F3864 !important;
     color: white !important;
@@ -38,6 +39,29 @@ st.markdown("""
     background: #2a4f8a !important;
     color: white !important;
 }
+/* ── Selectbox / text_input filters ── */
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stTextInput"] > div > div > input {
+    background: #eef3fb !important;
+    border: 1.5px solid #3266ad !important;
+    border-radius: 8px !important;
+    color: #1F3864 !important;
+    font-weight: 500 !important;
+}
+[data-testid="stSelectbox"] label,
+[data-testid="stTextInput"] label {
+    color: #1F3864 !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+}
+/* ── Table header rows ── */
+.tbl-header th {
+    background: #1F3864 !important;
+    color: white !important;
+    font-weight: 600 !important;
+}
+/* ── Bold percentages ── */
+.pct-bold { font-weight: 700 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -205,7 +229,7 @@ all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
 
 # ── DATE RANGE FILTER ────────────────────────────────────────────────────────
 st.markdown("# 📊 Raneen Sales Dashboard")
-st.markdown('<p style="color:#3266ad;font-size:16px;font-weight:600;margin-top:-10px;letter-spacing:.01em">✦ Created by / Ahmed Khamis</p>', unsafe_allow_html=True)
+st.markdown('<p style="background:linear-gradient(90deg,#1F3864,#3266ad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:19px;font-weight:800;margin-top:-8px;letter-spacing:.02em">✦ Created by Ahmed Khamis</p>', unsafe_allow_html=True)
 st.markdown("---")
 
 col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
@@ -387,14 +411,14 @@ st.plotly_chart(fig_cat, use_container_width=True)
 # Category table with heatmap bars
 max_total = cat_ch["Total"].max() if len(cat_ch) > 0 else 1
 cat_html = """<div style='max-height:520px;overflow-y:auto'><table style='width:100%;border-collapse:collapse;font-size:12px'>
-<tr style='border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white;z-index:2'>
-<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>#</th>
-<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>القسم</th>
-<th style='padding:7px 8px;text-align:left;color:#555;font-size:11px'>Channel</th>
-<th style='padding:7px 8px;text-align:right;color:#3266ad;font-size:11px'>Raneen (ج)</th>
-<th style='padding:7px 8px;text-align:right;color:#d85a30;font-size:11px'>MP (ج)</th>
-<th style='padding:7px 8px;text-align:right;color:#555;font-size:11px'>الإجمالي (ج)</th>
-<th style='padding:7px 8px;color:#555;font-size:11px;min-width:160px'>Raneen vs MP</th>
+<tr style='border-bottom:1.5px solid #1F3864;position:sticky;top:0;background:#1F3864;z-index:2'>
+<th style='padding:7px 8px;text-align:left;color:white;font-size:11px'>#</th>
+<th style='padding:7px 8px;text-align:left;color:white;font-size:11px'>القسم</th>
+<th style='padding:7px 8px;text-align:left;color:white;font-size:11px'>Channel</th>
+<th style='padding:7px 8px;text-align:right;color:#85b7eb;font-size:11px'>Raneen (ج)</th>
+<th style='padding:7px 8px;text-align:right;color:#f0997b;font-size:11px'>MP (ج)</th>
+<th style='padding:7px 8px;text-align:right;color:white;font-size:11px'>الإجمالي (ج)</th>
+<th style='padding:7px 8px;color:white;font-size:11px;min-width:160px'>Raneen vs MP</th>
 </tr>"""
 for i, (_, row) in enumerate(cat_ch.iterrows(), 1):
     tot = row["Total"] if row["Total"] > 0 else 1
@@ -409,7 +433,7 @@ for i, (_, row) in enumerate(cat_ch.iterrows(), 1):
 <div style='width:{r_pct:.0f}%;background:#3266ad'></div>
 <div style='width:{m_pct:.0f}%;background:#d85a30'></div>
 </div>
-<div style='font-size:10px;color:#aaa;margin-top:2px'>{r_pct:.0f}% Raneen · {m_pct:.0f}% MP</div>"""
+<div style='font-size:10px;color:#aaa;margin-top:2px'><b>{r_pct:.0f}%</b> Raneen · <b>{m_pct:.0f}%</b> MP</div>"""
     cat_html += f"""<tr style='border-bottom:.5px solid #f0f0f0'>
 <td style='padding:6px 8px;color:#aaa'>{i}</td>
 <td style='padding:6px 8px;font-weight:{"500" if i<=5 else "400"}'>{row["Attribute Set"]}</td>
@@ -432,23 +456,27 @@ if not pc.empty:
     selected_cat = st.selectbox("فلتر بالقسم", cats_available, key="pc_cat")
     pc_show = pc if selected_cat=="الكل" else pc[pc["Category"]==selected_cat]
     pc_show = pc_show.sort_values(["# Changes","SKU"], ascending=[False,True])
+
+    # limit to top 15 products
+    top15_skus = pc_show.drop_duplicates("SKU")["SKU"].head(15).tolist()
+    pc_show = pc_show[pc_show["SKU"].isin(top15_skus)]
+
     n_prods = pc_show["SKU"].nunique()
     _pc_col1, _pc_col2 = st.columns([3,1])
     with _pc_col1:
-        st.caption(f"{n_prods} منتج · {len(pc_show)} تغيير")
+        st.caption(f"عرض أعلى {n_prods} منتج (الأكثر تغييراً) · {len(pc_show)} تغيير")
     with _pc_col2:
         st.download_button("⬇ تصدير Excel", to_excel(pc_show), "تغييرات_السعر.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-    # Build grouped HTML table - product name appears once, changes listed below
     pc_show = pc_show.copy()
     pc_html = """<table style='width:100%;border-collapse:collapse;font-size:12px'>
-<tr style='border-bottom:1.5px solid #e0e0e0;background:var(--color-background-secondary,#f8f9fa)'>
-<th style='padding:7px 10px;text-align:left;color:#555;font-size:11px;width:30%'>المنتج</th>
-<th style='padding:7px 10px;text-align:left;color:#555;font-size:11px;width:12%'>التاريخ</th>
-<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>قبل (ج)</th>
-<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>بعد (ج)</th>
-<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>الفرق</th>
-<th style='padding:7px 10px;text-align:right;color:#555;font-size:11px'>كمية اليوم</th>
-<th style='padding:7px 10px;text-align:center;color:#555;font-size:11px'># تغييرات</th>
+<tr style='border-bottom:1.5px solid #1F3864;background:#1F3864'>
+<th style='padding:7px 10px;text-align:left;color:white;font-size:11px;width:30%'>المنتج</th>
+<th style='padding:7px 10px;text-align:left;color:white;font-size:11px;width:12%'>التاريخ</th>
+<th style='padding:7px 10px;text-align:right;color:#b5d4f4;font-size:11px'>قبل (ج)</th>
+<th style='padding:7px 10px;text-align:right;color:#b5d4f4;font-size:11px'>بعد (ج)</th>
+<th style='padding:7px 10px;text-align:right;color:white;font-size:11px'>الفرق</th>
+<th style='padding:7px 10px;text-align:right;color:#9fe1cb;font-size:11px'>كمية اليوم</th>
+<th style='padding:7px 10px;text-align:center;color:white;font-size:11px'># تغييرات</th>
 </tr>"""
     last_sku = None
     for _, row in pc_show.iterrows():
@@ -592,13 +620,13 @@ for idx_p, row_p in top_prod.iterrows():
 prod_html = (
     '<div style="max-height:500px;overflow-y:auto">' +
     '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-    '<tr style="border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white;z-index:2">' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">المنتج</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الكمية</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
-    '<th style="padding:7px 8px;color:#555;font-size:11px">أيام الظهور</th>' +
-    '<th style="padding:7px 8px;text-align:center;color:#555;font-size:11px">نسبة الأداء</th></tr>' +
+    '<tr style="border-bottom:1.5px solid #1F3864;position:sticky;top:0;background:#1F3864;z-index:2">' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">المنتج</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">الكمية</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#f0997b;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;color:white;font-size:11px">أيام الظهور</th>' +
+    '<th style="padding:7px 8px;text-align:center;color:#9fe1cb;font-size:11px">نسبة الأداء</th></tr>' +
     prod_rows + '</table></div>'
 )
 st.markdown(prod_html, unsafe_allow_html=True)
@@ -712,18 +740,18 @@ for i2, (_, rr) in enumerate(region_df.iterrows(), 1):
         '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{rr["orders"]:,}' + '</td>' +
         '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{rr["aov"]:,.0f}' + '</td>' +
         '<td style="padding:5px 8px;min-width:120px"><div style="background:#eee;border-radius:3px;height:6px"><div style="width:' + str(bw_r) + '%;background:' + col_r2 + ';height:6px;border-radius:3px"></div></div>' +
-        '<span style="font-size:10px;color:#aaa">' + str(rr["pct"]) + '%</span></td></tr>'
+        '<span style="font-size:10px;font-weight:700;color:#555">' + str(rr["pct"]) + '%</span></td></tr>'
     )
 reg_html = (
     '<div style="max-height:520px;overflow-y:auto">' +
     '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-    '<tr style="border-bottom:1.5px solid #e0e0e0;position:sticky;top:0;background:white">' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">المحافظة</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الأوردرات</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">AOV (ج)</th>' +
-    '<th style="padding:7px 8px;color:#555;font-size:11px;min-width:120px">النسبة</th></tr>' +
+    '<tr style="border-bottom:1.5px solid #1F3864;position:sticky;top:0;background:#1F3864">' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">المحافظة</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">الأوردرات</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">AOV (ج)</th>' +
+    '<th style="padding:7px 8px;color:white;font-size:11px;min-width:120px">النسبة</th></tr>' +
     reg_rows + '</table></div>'
 )
 st.markdown(reg_html, unsafe_allow_html=True)
@@ -786,17 +814,17 @@ for i3, (_, pr) in enumerate(pay_df.iterrows(), 1):
         '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{pr["orders"]:,}' + '</td>' +
         '<td style="padding:5px 8px;text-align:right;color:#555">' + f'{pr["aov"]:,.0f}' + '</td>' +
         '<td style="padding:5px 8px;min-width:120px"><div style="background:#eee;border-radius:3px;height:6px"><div style="width:' + str(bw_p) + '%;background:' + col_p2 + ';height:6px;border-radius:3px"></div></div>' +
-        '<span style="font-size:10px;color:#aaa">' + str(pr["pct"]) + '%</span></td></tr>'
+        '<span style="font-size:10px;font-weight:700;color:#555">' + str(pr["pct"]) + '%</span></td></tr>'
     )
 pay_html = (
     '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-    '<tr style="border-bottom:1.5px solid #e0e0e0">' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">#</th>' +
-    '<th style="padding:7px 8px;text-align:left;color:#555;font-size:11px">طريقة الدفع</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">المبيعات (ج)</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">الأوردرات</th>' +
-    '<th style="padding:7px 8px;text-align:right;color:#555;font-size:11px">AOV (ج)</th>' +
-    '<th style="padding:7px 8px;color:#555;font-size:11px;min-width:120px">النسبة</th></tr>' +
+    '<tr style="border-bottom:1.5px solid #1F3864;background:#1F3864">' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">#</th>' +
+    '<th style="padding:7px 8px;text-align:left;color:white;font-size:11px">طريقة الدفع</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">المبيعات (ج)</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">الأوردرات</th>' +
+    '<th style="padding:7px 8px;text-align:right;color:#b5d4f4;font-size:11px">AOV (ج)</th>' +
+    '<th style="padding:7px 8px;color:white;font-size:11px;min-width:120px">النسبة</th></tr>' +
     pay_rows + '</table>'
 )
 st.markdown(pay_html, unsafe_allow_html=True)
