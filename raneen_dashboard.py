@@ -606,11 +606,11 @@ with g3:
 
 # ── Metric cards row (numbers detail) ────────────────────────────────────────
 with c1:
-    st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي المبيعات</p><p class="metric-value">{total/1e6:.2f}M ج</p><p class="metric-sub">{total_orders:,} أوردر · تارجت: {_tgt_total/1e6:.2f}M</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي المبيعات</p><p class="metric-value">{total/1e6:.2f}M ج</p><p class="metric-sub">{total_orders:,} أوردر · تحقيق: <b style="color:{_ach_color(_ach_total)}">{_ach_total:.1f}%</b></p></div>', unsafe_allow_html=True)
 with c2:
-    st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">مبيعات Raneen</p><p class="metric-value" style="color:#3266ad">{raneen/1e6:.2f}M ج</p><p class="metric-sub">{raneen/total*100:.1f}% · تارجت: {_tgt_retail/1e6:.2f}M</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">مبيعات Raneen</p><p class="metric-value" style="color:#3266ad">{raneen/1e6:.2f}M ج</p><p class="metric-sub">{raneen_orders:,} أوردر · تحقيق: <b style="color:{_ach_color(_ach_raneen)}">{_ach_raneen:.1f}%</b></p></div>', unsafe_allow_html=True)
 with c3:
-    st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">مبيعات MP</p><p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p><p class="metric-sub">{mp/total*100:.1f}% · تارجت: {_tgt_mp/1e6:.2f}M</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">مبيعات MP</p><p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p><p class="metric-sub">{mp_orders:,} أوردر · تحقيق: <b style="color:{_ach_color(_ach_mp)}">{_ach_mp:.1f}%</b></p></div>', unsafe_allow_html=True)
 
 # ── METRICS ROW 2: AOV ────────────────────────────────────────────────────────
 c4,c5,c6 = st.columns(3)
