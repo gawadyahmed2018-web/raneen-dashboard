@@ -507,17 +507,36 @@ _mc_total   = _mc_summary.sum()
 _mc_colors  = ["#3266ad","#d85a30","#2a9e75","#ba7517","#533ab7","#993556","#185fa5","#639922","#854f0b"]
 _mc_list    = _mc_summary.index.tolist()
 
+_mc_raneen = df[df["Marketplace Seller"]=="raneen"].groupby("Main Category")["Value After Discounts"].sum()
+_mc_mp     = df[df["Marketplace Seller"]=="MP"].groupby("Main Category")["Value After Discounts"].sum()
+
 _mc_cols = st.columns(len(_mc_list))
 for _i, (_mc_name, _mc_rev) in enumerate(_mc_summary.items()):
     _mc_pct = _mc_rev / _mc_total * 100 if _mc_total > 0 else 0
     _mc_col = _mc_colors[_i % len(_mc_colors)]
+    _r_rev  = _mc_raneen.get(_mc_name, 0)
+    _m_rev  = _mc_mp.get(_mc_name, 0)
+    _r_pct  = _r_rev / _mc_rev * 100 if _mc_rev > 0 else 0
+    _m_pct  = _m_rev / _mc_rev * 100 if _mc_rev > 0 else 0
+    _bar = (
+        f"<div style='margin-top:6px'>"
+        f"<div style='display:flex;height:7px;border-radius:4px;overflow:hidden'>"
+        f"<div style='width:{_r_pct:.0f}%;background:#3266ad'></div>"
+        f"<div style='width:{_m_pct:.0f}%;background:#d85a30'></div>"
+        f"</div>"
+        f"<div style='display:flex;justify-content:space-between;margin-top:3px'>"
+        f"<span style='font-size:9px;color:#3266ad;font-weight:600'>R {_r_pct:.0f}%</span>"
+        f"<span style='font-size:9px;color:#d85a30;font-weight:600'>MP {_m_pct:.0f}%</span>"
+        f"</div></div>"
+    )
     with _mc_cols[_i]:
         st.markdown(
-            f'<div class="metric-card" style="border-left:4px solid {_mc_col};padding:.65rem .9rem">'
-            f'<p class="metric-label" style="font-size:11px">{_mc_name}</p>'
-            f'<p class="metric-value" style="color:{_mc_col};font-size:17px">{_mc_rev/1e6:.2f}M</p>'
-            f'<p class="metric-sub">{_mc_pct:.1f}% من الإجمالي</p>'
-            f'</div>',
+            f'<div class="metric-card" style="border-left:4px solid {_mc_col};padding:.65rem .9rem">' +
+            f'<p class="metric-label" style="font-size:11px">{_mc_name}</p>' +
+            f'<p class="metric-value" style="color:{_mc_col};font-size:17px">{_mc_rev/1e6:.2f}M</p>' +
+            f'<p class="metric-sub">{_mc_pct:.1f}% من الإجمالي</p>' +
+            _bar +
+            '</div>',
             unsafe_allow_html=True
         )
 
@@ -617,7 +636,12 @@ st.markdown(cat_html, unsafe_allow_html=True)
 # ── PRICE CHANGES with category dropdown ──────────────────────────────────────
 st.markdown('<p class="section-title">المنتجات التي تغير سعرها أكثر من 3 مرات</p>', unsafe_allow_html=True)
 
-pc = get_price_changes(df)
+# Apply main category filter to price changes
+_df_for_pc = df.copy()
+if _sel_main_cat != "كل الأقسام":
+    _df_for_pc = _df_for_pc[_df_for_pc["Main Category"] == _sel_main_cat]
+
+pc = get_price_changes(_df_for_pc)
 if not pc.empty:
     pc["Category"] = pc["Category"].str.replace("&amp;","&")
     cats_available = ["الكل"] + sorted(pc["Category"].unique().tolist())
@@ -712,6 +736,8 @@ with _col_tp3:
     _sel_perf_tp = st.selectbox("فلتر بمعيار الأداء", _perf_options, key="tp_perf_filter", label_visibility="collapsed")
 
 _df_tp = df.copy()
+if _sel_main_cat != "كل الأقسام":
+    _df_tp = _df_tp[_df_tp["Main Category"] == _sel_main_cat]
 if _sel_cat_tp != "كل الأقسام":
     _df_tp = _df_tp[_df_tp["Attribute Set"] == _sel_cat_tp]
 
