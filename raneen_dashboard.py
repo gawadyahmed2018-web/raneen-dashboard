@@ -120,10 +120,39 @@ def get_price_changes(df):
 # ── DEFAULT DATA URL ─────────────────────────────────────────────────────────
 DEFAULT_DATA_URL = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/raneen_default_data.csv"
 MAPPING_URL      = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/category_mapping.csv"
+GSHEET_SPEND_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTvCm7gn0G_PlQTKLV-gIRkuCXbfkQ956kNrK6jmUdgqRfL5LfI6x5IhJKs6l0a0g/pub?gid=1982732416&single=true&output=csv"
 
 @st.cache_data(ttl=3600)
 def load_default():
     return pd.read_csv(DEFAULT_DATA_URL)
+
+@st.cache_data(ttl=1800)
+def load_spend():
+    """
+    جيب عمودي التاريخ (B) والانفاق (M) من Google Sheet.
+    الشيت فيه جداول شهرية تحت بعض، كل جدول ليه header row.
+    نفلتر على الصفوف اللي عمود B فيه تاريخ وعمود M فيه رقم.
+    """
+    try:
+        import io as _io
+        df_raw = pd.read_csv(GSHEET_SPEND_URL, header=None)
+        rows = []
+        for _, row in df_raw.iterrows():
+            date_val  = str(row.iloc[1]).strip()   # عمود B
+            spend_val = str(row.iloc[12]).strip()  # عمود M (index 12)
+            # نحاول نحول التاريخ — بيبقى زي "01-Jan" أو "01-Jan-2026"
+            try:
+                dt = pd.to_datetime(date_val, dayfirst=True, errors="raise")
+                spend = float(str(spend_val).replace(",","").replace("%","").strip())
+                rows.append({"Date": dt, "Total_Spend": spend})
+            except Exception:
+                continue
+        df_spend = pd.DataFrame(rows)
+        df_spend = df_spend[df_spend["Total_Spend"] > 0].copy()
+        df_spend["Day"] = df_spend["Date"].dt.strftime("%b %d")
+        return df_spend
+    except Exception:
+        return pd.DataFrame(columns=["Date","Total_Spend","Day"])
 
 @st.cache_data(ttl=86400)
 def load_mapping():
@@ -391,6 +420,16 @@ df = df_full[df_full["Day"].isin(days_range)].copy()
 _cat_map = load_mapping()
 df["Main Category"] = df["Attribute Set"].str.replace("&amp;","&").map(_cat_map).fillna("Other")
 
+# Load spend data from Google Sheet and filter by selected date range
+df_spend = load_spend()
+df_spend_filtered = df_spend[
+    (df_spend["Date"].dt.date >= date_from) &
+    (df_spend["Date"].dt.date <= date_to)
+] if not df_spend.empty else pd.DataFrame(columns=["Date","Total_Spend","Day"])
+
+total_spend    = df_spend_filtered["Total_Spend"].sum()
+spend_per_day  = df_spend_filtered.groupby("Day")["Total_Spend"].sum()
+
 date_min = df["Purchase Date"].dt.date.min()
 date_max = df["Purchase Date"].dt.date.max()
 
@@ -413,6 +452,18 @@ aov_raneen = raneen / raneen_orders if raneen_orders else 0
 aov_mp     = mp     / mp_orders     if mp_orders     else 0
 
 days_sorted = days_range
+
+# ── METRICS ROW 4: Spend ──────────────────────────────────────────────────────
+if total_spend > 0:
+    _spend_rev_pct = total / total_spend if total_spend > 0 else 0
+    _roas          = total / total_spend if total_spend > 0 else 0
+    c10, c11, c12 = st.columns(3)
+    with c10:
+        st.markdown(f'<div class="metric-card" style="border-left:4px solid #854f0b"><p class="metric-label">📢 إجمالي الإنفاق الإعلاني</p><p class="metric-value" style="color:#854f0b">{total_spend/1e6:.2f}M ج</p><p class="metric-sub">للفترة المختارة</p></div>', unsafe_allow_html=True)
+    with c11:
+        st.markdown(f'<div class="metric-card" style="border-left:4px solid #639922"><p class="metric-label">📈 ROAS</p><p class="metric-value" style="color:#639922">{_roas:.1f}x</p><p class="metric-sub">إيرادات / إنفاق</p></div>', unsafe_allow_html=True)
+    with c12:
+        st.markdown(f'<div class="metric-card" style="border-left:4px solid #533ab7"><p class="metric-label">💰 Spend/Revenue %</p><p class="metric-value" style="color:#533ab7">{total_spend/total*100:.1f}%</p><p class="metric-sub">نسبة الإنفاق من المبيعات</p></div>', unsafe_allow_html=True)
 
 # ── METRICS ROW 1: Sales ──────────────────────────────────────────────────────
 st.markdown('<p class="section-title">المبيعات الإجمالية</p>', unsafe_allow_html=True)
@@ -479,6 +530,18 @@ for i, day in enumerate(days_sorted):
         r_pct = r_vals[i] / tot * 100
         mp_pct = mp_vals[i] / tot * 100
 
+# Add spend line if data available
+if total_spend > 0:
+    spend_vals = [spend_per_day.get(d, 0) for d in days_sorted]
+    if any(v > 0 for v in spend_vals):
+        fig_ts.add_trace(go.Scatter(
+            x=days_sorted, y=spend_vals, name="الإنفاق الإعلاني",
+            mode="lines+markers", line=dict(color="#854f0b", width=2, dash="dot"),
+            marker=dict(size=5, symbol="diamond"),
+            hovertemplate="<b>%{x}</b><br>الإنفاق: %{y:,.0f} ج<extra></extra>",
+            yaxis="y2"
+        ))
+
 fig_ts.update_layout(
     height=320,
     margin=dict(t=20, b=20, l=10, r=10),
@@ -486,6 +549,9 @@ fig_ts.update_layout(
     plot_bgcolor="rgba(0,0,0,0)",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
     yaxis=dict(tickformat=",.0f", gridcolor="rgba(128,128,128,0.1)"),
+    yaxis2=dict(tickformat=",.0f", overlaying="y", side="right", showgrid=False,
+                title=dict(text="الإنفاق", font=dict(color="#854f0b")),
+                tickfont=dict(color="#854f0b")),
     xaxis=dict(showgrid=False),
     hovermode="x unified"
 )
