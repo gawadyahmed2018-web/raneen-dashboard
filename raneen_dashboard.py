@@ -119,10 +119,81 @@ def get_price_changes(df):
 
 # ── DEFAULT DATA URL ─────────────────────────────────────────────────────────
 DEFAULT_DATA_URL = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/raneen_default_data.csv"
+MAPPING_URL      = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/category_mapping.csv"
 
 @st.cache_data(ttl=3600)
 def load_default():
     return pd.read_csv(DEFAULT_DATA_URL)
+
+@st.cache_data(ttl=86400)
+def load_mapping():
+    try:
+        df_m = pd.read_csv(MAPPING_URL)
+        return df_m.set_index("attribute_set_name")["first_category"].to_dict()
+    except Exception:
+        # Fallback: hardcoded from category_mapping.xlsx
+        return {
+            'Yogurt Maker':'Appliances','Water Heaters':'Appliances','Water Dispenser':'Appliances',
+            'Washers & Dryer':'Appliances','Vacuum Cleaners':'Appliances','Toasters':'Appliances',
+            'Tanks':'Appliances','Suction Fan':'Appliances','Sandwich Waffle Makers':'Appliances',
+            'Refrigerators & Freezers':'Appliances','Pressure Cooker':'Appliances',
+            'Mixers & Blenders':'Appliances','Microwaves & Ovens':'Appliances',
+            'Kitchen Machine & Kneading Machines':'Appliances','Kettles':'Appliances',
+            'Juicers':'Appliances','Irons':'Appliances','Insect Killer':'Appliances',
+            'Heaters':'Appliances','Grinders':'Appliances','Grill':'Appliances',
+            'Fryers':'Appliances','Fans':'Appliances','Electric Slicers':'Appliances',
+            'Electric Meat Grinders':'Appliances','Dishwasher':'Appliances',
+            'Cookware':'Appliances','Cookers':'Appliances','Coffee Makers':'Appliances',
+            'Burner':'Appliances','Built in':'Appliances','Baking Tools':'Appliances',
+            'Air Conditioner':'Appliances','Air Coolers':'Appliances',
+            'Televisions':'Electronics','Smart Watches':'Electronics',
+            'Security & Surveillance Systems':'Electronics','Scanners':'Electronics',
+            'Remote Units':'Electronics','Printers':'Electronics','Power Banks':'Electronics',
+            'Monitors':'Electronics','Mobile Cable':'Electronics','Laptop Accessories':'Electronics',
+            'Electronics Storage & Accessories':'Electronics','Electronics Audio':'Electronics',
+            'Chargers':'Electronics','Car Audio':'Electronics','Car Amplifiers':'Electronics',
+            'Cameras':'Electronics','AirPods':'Electronics',
+            'Mobile Phones':'Mobiles','Mobile Accessories':'Mobiles',
+            'Wardrobe':'Furniture','TV Table':'Furniture','TV Stand & Accessories':'Furniture',
+            'Textile':'Furniture','Storage Units':'Furniture','Storage':'Furniture',
+            'Sofa':'Furniture','Side Table':'Furniture','Shoe Rack':'Furniture',
+            'Shelves':'Furniture','Safes and Safe Accessories':'Furniture',
+            'Nursery Furniture & Decor':'Furniture','Living Rooms':'Furniture',
+            'Garden Swing':'Furniture','Garden Furniture':'Furniture','Desks':'Furniture',
+            'Dressing Table':'Furniture','Commode & Drawer Units':'Furniture',
+            'Clothes Hangers':'Furniture','Chairs':'Furniture','Center Table':'Furniture',
+            'Beds':'Furniture','Bean Bags':'Furniture','Office Chairs':'Furniture',
+            'Kitchen Rooms':'Furniture',
+            'Water Filters':'Home','Water Filters Accessories':'Home',
+            'Wall Decor':'Home','Table Lighting':'Home','Picture Frames':'Home',
+            'Mirror':'Home','Lighting Hanging':'Home','Home Decor':'Home',
+            'Floor Lamp':'Home','Curtain':'Home','Carpets':'Home',
+            'Bathroom Accessories':'Home','Home & Balcony Essentials':'Home',
+            'Serveware':'Kitchen','Kitchenware':'Kitchen','Kitchen Scale':'Kitchen',
+            'Kitchen Accessories':'Kitchen','Drinkware':'Kitchen','Baking Tools':'Kitchen',
+            'Towels':'Textile','Pillows':'Textile','Mattress':'Textile',
+            'Bed Sheets':'Textile','Bedding':'Textile',
+            'Tops and T-shirts':'Fashion','Underwears':'Fashion','Sportswear':'Fashion',
+            'Shoes':'Fashion','Perfumes':'Fashion','Pajamas & Sleepwear':'Fashion',
+            'Mens Bags':'Fashion','Makeup':'Fashion','Luggage':'Fashion',
+            'Hair Care':'Fashion','Hair Treatments':'Fashion',
+            'Beauty & Body Care':'Fashion','Watches':'Fashion','Watches & Alarms':'Fashion',
+            'Sports Equipment':'Family Products','Soap & Shower Gel':'Family Products',
+            'Skin Care':'Family Products','Shaving & Grooming':'Family Products',
+            'Shampoos & Conditioners':'Family Products','Sewing Machines':'Family Products',
+            'Scooters':'Family Products','Pet Supplies':'Family Products',
+            'Pet Foods':'Family Products','PlayStation & Accessories':'Family Products',
+            'PlayStation Games & Accessories':'Family Products',
+            'Nursery Furniture & Decor':'Family Products','Dolls':'Family Products',
+            'Diapers':'Family Products','Child Safety':'Family Products',
+            'Car Video':'Family Products','Car Tires':'Family Products',
+            'Car Speakers':'Family Products','Car Parts And Services':'Family Products',
+            'Car Care':'Family Products','Car Audio':'Family Products',
+            'Bike & Scooters':'Family Products','Baby Feeding':'Family Products',
+            'Baby Care':'Family Products','Baby Accessories':'Family Products',
+            'Activities & Books':'Family Products','Action Toys':'Family Products',
+            'Baby Gears':'Family Products','Dolls':'Family Products',
+        }
 
 # ── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -316,6 +387,10 @@ st.markdown("---")
 days_range = [d for d in all_days if date_from <= pd.to_datetime(d+" 2026").date() <= date_to]
 df = df_full[df_full["Day"].isin(days_range)].copy()
 
+# Apply category mapping
+_cat_map = load_mapping()
+df["Main Category"] = df["Attribute Set"].str.replace("&amp;","&").map(_cat_map).fillna("Other")
+
 date_min = df["Purchase Date"].dt.date.min()
 date_max = df["Purchase Date"].dt.date.max()
 
@@ -424,10 +499,44 @@ with col_ts2:
 with col_ts3:
     st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">MP</p><p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p><p class="metric-sub">{mp/total*100:.1f}% من الإجمالي</p></div>', unsafe_allow_html=True)
 
+# ── MAIN CATEGORY METRICS ────────────────────────────────────────────────────
+st.markdown('<p class="section-title">أداء الـ Main Categories</p>', unsafe_allow_html=True)
+
+_mc_summary = df.groupby("Main Category")["Value After Discounts"].sum().sort_values(ascending=False)
+_mc_total   = _mc_summary.sum()
+_mc_colors  = ["#3266ad","#d85a30","#2a9e75","#ba7517","#533ab7","#993556","#185fa5","#639922","#854f0b"]
+_mc_list    = _mc_summary.index.tolist()
+
+_mc_cols = st.columns(len(_mc_list))
+for _i, (_mc_name, _mc_rev) in enumerate(_mc_summary.items()):
+    _mc_pct = _mc_rev / _mc_total * 100 if _mc_total > 0 else 0
+    _mc_col = _mc_colors[_i % len(_mc_colors)]
+    with _mc_cols[_i]:
+        st.markdown(
+            f'<div class="metric-card" style="border-left:4px solid {_mc_col};padding:.65rem .9rem">'
+            f'<p class="metric-label" style="font-size:11px">{_mc_name}</p>'
+            f'<p class="metric-value" style="color:{_mc_col};font-size:17px">{_mc_rev/1e6:.2f}M</p>'
+            f'<p class="metric-sub">{_mc_pct:.1f}% من الإجمالي</p>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
 # ── BY CATEGORY ───────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">مبيعات كل قسم — Raneen vs MP</p>', unsafe_allow_html=True)
 
-cat_all = df.groupby(["Attribute Set","Marketplace Seller"])["Value After Discounts"].sum().unstack(fill_value=0).reset_index()
+# Main Category filter
+_sel_main_cat = st.selectbox(
+    "فلتر بـ Main Category",
+    ["كل الأقسام"] + _mc_list,
+    key="main_cat_filter",
+    label_visibility="collapsed"
+)
+
+_df_for_cat = df.copy()
+if _sel_main_cat != "كل الأقسام":
+    _df_for_cat = _df_for_cat[_df_for_cat["Main Category"] == _sel_main_cat]
+
+cat_all = _df_for_cat.groupby(["Attribute Set","Marketplace Seller"])["Value After Discounts"].sum().unstack(fill_value=0).reset_index()
 if "MP" not in cat_all.columns: cat_all["MP"]=0
 if "raneen" not in cat_all.columns: cat_all["raneen"]=0
 cat_all["Total"] = cat_all["MP"] + cat_all["raneen"]
