@@ -188,6 +188,7 @@ with st.sidebar:
             df_processed.drop(columns=["_dt","_ym"], errors="ignore", inplace=True)
 
             if ok_default:
+                load_default.clear()  # امسح الكاش عشان يجيب الداتا الجديدة
                 msg = "✅ اتحفظ كـ Default أوتوماتيك!"
                 if monthly_saved:
                     msg += f"  |  📁 أرشيف: {', '.join(monthly_saved)}"
