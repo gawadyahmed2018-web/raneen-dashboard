@@ -521,15 +521,46 @@ def _ach_color(pct):
     if pct >= 80:  return "#ba7517"
     return "#d85a30"
 
-def _ach_badge(pct):
-    color = _ach_color(pct)
-    icon  = "✅" if pct >= 100 else "🔶" if pct >= 80 else "🔴"
-    return (
-        f"<div style='margin-top:5px;background:{color}18;border-radius:6px;"
-        f"padding:3px 8px;display:inline-block'>"
-        f"<span style='font-size:11px;font-weight:700;color:{color}'>"
-        f"{icon} {pct:.1f}% من التارجت</span></div>"
+def _make_gauge(pct, label, value_str, target_str, color):
+    """Plotly gauge figure for achievement percentage."""
+    pct_capped = min(pct, 150)
+    bar_color  = _ach_color(pct)
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=pct_capped,
+        number={"suffix": "%", "font": {"size": 22, "color": bar_color}, "valueformat": ".1f"},
+        delta={"reference": 100, "valueformat": ".1f", "suffix": "%",
+               "font": {"size": 11},
+               "increasing": {"color": "#2a9e75"},
+               "decreasing": {"color": "#d85a30"}},
+        title={"text": f"<b>{label}</b><br><span style='font-size:11px;color:#888'>{value_str} / {target_str}</span>",
+               "font": {"size": 13}},
+        gauge={
+            "axis": {"range": [0, 150], "tickwidth": 1, "tickcolor": "#ccc",
+                     "tickvals": [0, 50, 100, 150],
+                     "ticktext": ["0%", "50%", "100%", "150%"]},
+            "bar": {"color": bar_color, "thickness": 0.28},
+            "bgcolor": "rgba(0,0,0,0)",
+            "borderwidth": 0,
+            "steps": [
+                {"range": [0,   80],  "color": "#fde8e0"},
+                {"range": [80,  100], "color": "#faeeda"},
+                {"range": [100, 150], "color": "#e1f5ee"},
+            ],
+            "threshold": {
+                "line": {"color": "#1F3864", "width": 3},
+                "thickness": 0.85,
+                "value": 100
+            }
+        }
+    ))
+    fig.update_layout(
+        height=200,
+        margin=dict(t=60, b=10, l=20, r=20),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font={"family": "sans-serif"}
     )
+    return fig
 
 # ── METRICS ROW 4: Spend ──────────────────────────────────────────────────────
 if total_spend > 0:
@@ -546,27 +577,40 @@ if total_spend > 0:
 # ── METRICS ROW 1: Sales ──────────────────────────────────────────────────────
 st.markdown('<p class="section-title">المبيعات الإجمالية</p>', unsafe_allow_html=True)
 c1,c2,c3 = st.columns(3)
+# ── Gauge row ────────────────────────────────────────────────────────────────
+g1, g2, g3 = st.columns(3)
+with g1:
+    st.plotly_chart(_make_gauge(
+        _ach_total,
+        "إجمالي المبيعات",
+        f"{total/1e6:.2f}M ج",
+        f"{_tgt_total/1e6:.2f}M ج",
+        "#1F3864"
+    ), use_container_width=True, config={"displayModeBar": False})
+with g2:
+    st.plotly_chart(_make_gauge(
+        _ach_raneen,
+        "Raneen",
+        f"{raneen/1e6:.2f}M ج",
+        f"{_tgt_retail/1e6:.2f}M ج",
+        "#3266ad"
+    ), use_container_width=True, config={"displayModeBar": False})
+with g3:
+    st.plotly_chart(_make_gauge(
+        _ach_mp,
+        "MP",
+        f"{mp/1e6:.2f}M ج",
+        f"{_tgt_mp/1e6:.2f}M ج",
+        "#d85a30"
+    ), use_container_width=True, config={"displayModeBar": False})
+
+# ── Metric cards row (numbers detail) ────────────────────────────────────────
 with c1:
-    st.markdown(
-        f'<div class="metric-card"><p class="metric-label">إجمالي المبيعات</p>' +
-        f'<p class="metric-value">{total/1e6:.2f}M ج</p>' +
-        f'<p class="metric-sub">{total_orders:,} أوردر · تارجت: {_tgt_total/1e6:.2f}M</p>' +
-        _ach_badge(_ach_total) + '</div>',
-        unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي المبيعات</p><p class="metric-value">{total/1e6:.2f}M ج</p><p class="metric-sub">{total_orders:,} أوردر · تارجت: {_tgt_total/1e6:.2f}M</p></div>', unsafe_allow_html=True)
 with c2:
-    st.markdown(
-        f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">مبيعات Raneen</p>' +
-        f'<p class="metric-value" style="color:#3266ad">{raneen/1e6:.2f}M ج</p>' +
-        f'<p class="metric-sub">{raneen/total*100:.1f}% · تارجت: {_tgt_retail/1e6:.2f}M</p>' +
-        _ach_badge(_ach_raneen) + '</div>',
-        unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">مبيعات Raneen</p><p class="metric-value" style="color:#3266ad">{raneen/1e6:.2f}M ج</p><p class="metric-sub">{raneen/total*100:.1f}% · تارجت: {_tgt_retail/1e6:.2f}M</p></div>', unsafe_allow_html=True)
 with c3:
-    st.markdown(
-        f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">مبيعات MP</p>' +
-        f'<p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p>' +
-        f'<p class="metric-sub">{mp/total*100:.1f}% · تارجت: {_tgt_mp/1e6:.2f}M</p>' +
-        _ach_badge(_ach_mp) + '</div>',
-        unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">مبيعات MP</p><p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p><p class="metric-sub">{mp/total*100:.1f}% · تارجت: {_tgt_mp/1e6:.2f}M</p></div>', unsafe_allow_html=True)
 
 # ── METRICS ROW 2: AOV ────────────────────────────────────────────────────────
 c4,c5,c6 = st.columns(3)
