@@ -129,26 +129,35 @@ def load_default():
 @st.cache_data(ttl=1800)
 def load_spend():
     """
-    جيب عمودي التاريخ (B) والانفاق (M) من Google Sheet.
-    الشيت فيه جداول شهرية تحت بعض، كل جدول ليه header row.
-    نفلتر على الصفوف اللي عمود B فيه تاريخ وعمود M فيه رقم.
+    جيب عمودي التاريخ (col B = index 1) والانفاق (col M = index 12).
+    الشيت: صف 0 عنوان، صف 1 فئات، صف 2 أسماء أعمدة، صفوف شهرية header.
+    التاريخ بصيغة "01-Jan"، الأرقام بفواصل "290,139".
     """
     try:
         import io as _io
         df_raw = pd.read_csv(GSHEET_SPEND_URL, header=None)
         rows = []
         for _, row in df_raw.iterrows():
-            date_val  = str(row.iloc[1]).strip()   # عمود B
-            spend_val = str(row.iloc[12]).strip()  # عمود M (index 12)
-            # نحاول نحول التاريخ — بيبقى زي "01-Jan" أو "01-Jan-2026"
+            date_val  = str(row.iloc[1]).strip()
+            spend_val = str(row.iloc[12]).strip()
+            # تجاهل الصفوف الفاضية أو الـ headers
+            if not date_val or date_val in ["nan", "Date", "Day"] or "Jan" not in date_val and "Feb" not in date_val and "Mar" not in date_val and "Apr" not in date_val and "May" not in date_val and "Jun" not in date_val and "Jul" not in date_val and "Aug" not in date_val and "Sep" not in date_val and "Oct" not in date_val and "Nov" not in date_val and "Dec" not in date_val:
+                continue
+            # تنظيف الأرقام
+            spend_clean = spend_val.replace(",","").replace("%","").strip()
+            if not spend_clean or spend_clean in ["nan","Total Spend","Total_Spend","-"]:
+                continue
             try:
-                dt = pd.to_datetime(date_val, dayfirst=True, errors="raise")
-                spend = float(str(spend_val).replace(",","").replace("%","").strip())
-                rows.append({"Date": dt, "Total_Spend": spend})
+                # التاريخ "01-Jan" → نضيف السنة من الشيت (2026)
+                dt = pd.to_datetime(date_val + "-2026", format="%d-%b-%Y", errors="raise")
+                spend = float(spend_clean)
+                if spend > 0:
+                    rows.append({"Date": dt, "Total_Spend": spend})
             except Exception:
                 continue
         df_spend = pd.DataFrame(rows)
-        df_spend = df_spend[df_spend["Total_Spend"] > 0].copy()
+        if df_spend.empty:
+            return df_spend
         df_spend["Day"] = df_spend["Date"].dt.strftime("%b %d")
         return df_spend
     except Exception:
