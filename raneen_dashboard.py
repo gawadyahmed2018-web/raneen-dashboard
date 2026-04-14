@@ -122,6 +122,48 @@ DEFAULT_DATA_URL = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen
 MAPPING_URL      = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/category_mapping.csv"
 GSHEET_SPEND_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTvCm7gn0G_PlQTKLV-gIRkuCXbfkQ956kNrK6jmUdgqRfL5LfI6x5IhJKs6l0a0g/pub?gid=1982732416&single=true&output=csv"
 
+# ── Monthly Targets ───────────────────────────────────────────────────────────
+MONTHLY_TARGETS = {
+    1:  {"budget": 6_038_416, "spend_pct": 3.60, "total": 168_716_207, "mp": 56_605_296, "retail": 112_110_911},
+    2:  {"budget": 3_533_095, "spend_pct": 3.20, "total": 111_789_600, "mp": 45_003_367, "retail":  66_786_233},
+    3:  {"budget": 4_214_038, "spend_pct": 3.00, "total": 140_954_260, "mp": 50_164_513, "retail":  90_789_747},
+    4:  {"budget": 4_124_552, "spend_pct": 3.20, "total": 127_069_401, "mp": 54_536_761, "retail":  72_532_640},
+    5:  {"budget": 4_916_567, "spend_pct": 3.30, "total": 147_585_977, "mp": 56_404_107, "retail":  91_181_870},
+    6:  {"budget": 7_583_190, "spend_pct": 3.60, "total": 211_373_442, "mp": 90_894_279, "retail": 120_479_163},
+    7:  {"budget": 5_966_908, "spend_pct": 3.40, "total": 174_637_356, "mp": 69_000_867, "retail": 105_636_489},
+    8:  {"budget": 5_489_475, "spend_pct": 3.30, "total": 166_923_634, "mp": 63_342_181, "retail": 103_581_453},
+    9:  {"budget": 4_981_784, "spend_pct": 3.40, "total": 145_805_090, "mp": 62_152_786, "retail":  83_652_304},
+    10: {"budget": 4_365_925, "spend_pct": 3.10, "total": 141_978_168, "mp": 59_902_368, "retail":  82_075_800},
+    11: {"budget":14_731_264, "spend_pct": 4.40, "total": 338_156_399, "mp":148_855_992, "retail": 189_300_407},
+    12: {"budget": 3_871_710, "spend_pct": 3.10, "total": 125_906_478, "mp": 52_929_212, "retail":  72_977_266},
+}
+
+import calendar as _calendar
+
+def get_period_targets(date_from, date_to):
+    """
+    احسب التارجت والبادجت للفترة المختارة.
+    كل شهر بيتقسم بالتساوي على عدد أيامه.
+    لو الفترة تغطي أكتر من شهر، بنجمع نسبة الأيام من كل شهر.
+    """
+    import datetime as _dt
+    t_total = t_mp = t_retail = t_budget = 0.0
+    current = date_from
+    while current <= date_to:
+        m = current.month
+        days_in_month = _calendar.monthrange(current.year, m)[1]
+        tgt = MONTHLY_TARGETS.get(m, {})
+        daily_total  = tgt.get("total",  0) / days_in_month
+        daily_mp     = tgt.get("mp",     0) / days_in_month
+        daily_retail = tgt.get("retail", 0) / days_in_month
+        daily_budget = tgt.get("budget", 0) / days_in_month
+        t_total  += daily_total
+        t_mp     += daily_mp
+        t_retail += daily_retail
+        t_budget += daily_budget
+        current  += _dt.timedelta(days=1)
+    return {"total": t_total, "mp": t_mp, "retail": t_retail, "budget": t_budget}
+
 @st.cache_data(ttl=3600)
 def load_default():
     return pd.read_csv(DEFAULT_DATA_URL)
@@ -462,6 +504,33 @@ aov_mp     = mp     / mp_orders     if mp_orders     else 0
 
 days_sorted = days_range
 
+# ── Calculate period targets ──────────────────────────────────────────────────
+_period_tgt = get_period_targets(date_from, date_to)
+_tgt_total   = _period_tgt["total"]
+_tgt_mp      = _period_tgt["mp"]
+_tgt_retail  = _period_tgt["retail"]
+_tgt_budget  = _period_tgt["budget"]
+
+# Achievement percentages
+_ach_total   = total  / _tgt_total  * 100 if _tgt_total  > 0 else 0
+_ach_raneen  = raneen / _tgt_retail * 100 if _tgt_retail > 0 else 0
+_ach_mp      = mp     / _tgt_mp     * 100 if _tgt_mp     > 0 else 0
+
+def _ach_color(pct):
+    if pct >= 100: return "#2a9e75"
+    if pct >= 80:  return "#ba7517"
+    return "#d85a30"
+
+def _ach_badge(pct):
+    color = _ach_color(pct)
+    icon  = "✅" if pct >= 100 else "🔶" if pct >= 80 else "🔴"
+    return (
+        f"<div style='margin-top:5px;background:{color}18;border-radius:6px;"
+        f"padding:3px 8px;display:inline-block'>"
+        f"<span style='font-size:11px;font-weight:700;color:{color}'>"
+        f"{icon} {pct:.1f}% من التارجت</span></div>"
+    )
+
 # ── METRICS ROW 4: Spend ──────────────────────────────────────────────────────
 if total_spend > 0:
     _spend_rev_pct = total / total_spend if total_spend > 0 else 0
@@ -478,11 +547,26 @@ if total_spend > 0:
 st.markdown('<p class="section-title">المبيعات الإجمالية</p>', unsafe_allow_html=True)
 c1,c2,c3 = st.columns(3)
 with c1:
-    st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي المبيعات</p><p class="metric-value">{total/1e6:.2f}M ج</p><p class="metric-sub">{total_orders:,} أوردر</p></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="metric-card"><p class="metric-label">إجمالي المبيعات</p>' +
+        f'<p class="metric-value">{total/1e6:.2f}M ج</p>' +
+        f'<p class="metric-sub">{total_orders:,} أوردر · تارجت: {_tgt_total/1e6:.2f}M</p>' +
+        _ach_badge(_ach_total) + '</div>',
+        unsafe_allow_html=True)
 with c2:
-    st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">مبيعات Raneen</p><p class="metric-value" style="color:#3266ad">{raneen/1e6:.2f}M ج</p><p class="metric-sub">{raneen/total*100:.1f}% · {raneen_orders:,} أوردر</p></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">مبيعات Raneen</p>' +
+        f'<p class="metric-value" style="color:#3266ad">{raneen/1e6:.2f}M ج</p>' +
+        f'<p class="metric-sub">{raneen/total*100:.1f}% · تارجت: {_tgt_retail/1e6:.2f}M</p>' +
+        _ach_badge(_ach_raneen) + '</div>',
+        unsafe_allow_html=True)
 with c3:
-    st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">مبيعات MP</p><p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p><p class="metric-sub">{mp/total*100:.1f}% · {mp_orders:,} أوردر</p></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">مبيعات MP</p>' +
+        f'<p class="metric-value" style="color:#d85a30">{mp/1e6:.2f}M ج</p>' +
+        f'<p class="metric-sub">{mp/total*100:.1f}% · تارجت: {_tgt_mp/1e6:.2f}M</p>' +
+        _ach_badge(_ach_mp) + '</div>',
+        unsafe_allow_html=True)
 
 # ── METRICS ROW 2: AOV ────────────────────────────────────────────────────────
 c4,c5,c6 = st.columns(3)
