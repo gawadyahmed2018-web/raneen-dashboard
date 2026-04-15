@@ -168,7 +168,7 @@ def get_period_targets(date_from, date_to):
 def load_default():
     return pd.read_csv(DEFAULT_DATA_URL)
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=300)
 def load_spend():
     """
     جيب عمودي التاريخ (col B = index 1) والانفاق (col M = index 12).
@@ -190,13 +190,24 @@ def load_spend():
             if not spend_clean or spend_clean in ["nan","Total Spend","Total_Spend","-"]:
                 continue
             try:
-                # التاريخ "01-Jan" → نضيف السنة من الشيت (2026)
-                dt = pd.to_datetime(date_val + "-2026", format="%d-%b-%Y", errors="raise")
+                # نجرب بدون سنة أولاً (pandas بيحدد السنة أوتوماتيك)
+                dt = pd.to_datetime(date_val, format="%d-%b", errors="raise")
+                # نضيف السنة الصح بناءً على الشهر
+                import datetime as _dt2
+                cur_year = _dt2.date.today().year
+                dt = dt.replace(year=cur_year)
                 spend = float(spend_clean)
                 if spend > 0:
                     rows.append({"Date": dt, "Total_Spend": spend})
             except Exception:
-                continue
+                try:
+                    # fallback: جرب مع السنة المكتوبة في الشيت
+                    dt = pd.to_datetime(date_val, dayfirst=True, errors="raise")
+                    spend = float(spend_clean)
+                    if spend > 0:
+                        rows.append({"Date": dt, "Total_Spend": spend})
+                except Exception:
+                    continue
         df_spend = pd.DataFrame(rows)
         if df_spend.empty:
             return df_spend
@@ -340,6 +351,7 @@ with st.sidebar:
 
             if ok_default:
                 load_default.clear()  # امسح الكاش عشان يجيب الداتا الجديدة
+                load_spend.clear()    # امسح كاش الانفاق كمان
                 msg = "✅ اتحفظ كـ Default أوتوماتيك!"
                 if monthly_saved:
                     msg += f"  |  📁 أرشيف: {', '.join(monthly_saved)}"
