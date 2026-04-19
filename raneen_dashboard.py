@@ -375,20 +375,7 @@ if using_default:
         df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
         if "Day" not in df_full.columns:
             df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
-        st.markdown("""
-        <div style="background:#1F3864;border-radius:10px;padding:1rem 1.5rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-          <div>
-            <p style="color:#85b7eb;font-size:12px;margin:0">📊 عارض داتا آخر شيت محفوظ — 1 إلى 10 أبريل 2026</p>
-            <p style="color:#fff;font-size:11px;margin:4px 0 0;opacity:.7">لتحديث البيانات ارفع شيت ماجينتو الجديد من القايمة الجانبية</p>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.sidebar.markdown("""
-        <div style="background:#d85a30;border-radius:8px;padding:.75rem 1rem;text-align:center;margin-bottom:.5rem">
-          <p style="color:white;font-size:13px;font-weight:600;margin:0">⬆️ أضف الشيت المحدَّث هنا</p>
-          <p style="color:rgba(255,255,255,.8);font-size:11px;margin:4px 0 0">لتحديث بيانات الداشبورد</p>
-        </div>
-        """, unsafe_allow_html=True)
+
     except Exception as e:
         st.error(f"تعذّر تحميل البيانات الافتراضية: {e}")
         st.stop()
