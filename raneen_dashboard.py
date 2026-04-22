@@ -905,10 +905,24 @@ else:
     st.info("لا توجد منتجات بأكثر من 3 تغييرات في السعر")
 st.markdown('<p class="section-title">مبيعات يومية — أعلى 6 أقسام</p>', unsafe_allow_html=True)
 
-top6_cats = df.groupby("Attribute Set")["Value After Discounts"].sum().nlargest(6).index.tolist()
+_lf1, _lf2 = st.columns([1, 1])
+with _lf1:
+    _line_main_cats = sorted(df["Main Category"].dropna().unique().tolist())
+    _line_main_sel  = st.multiselect("فلتر بـ Main Category", _line_main_cats, placeholder="كل الأقسام", key="line_main", label_visibility="collapsed")
+with _lf2:
+    _df_line = df.copy()
+    if _line_main_sel:
+        _df_line = _df_line[_df_line["Main Category"].isin(_line_main_sel)]
+    _line_attr_cats = sorted(_df_line["Attribute Set"].dropna().unique().tolist())
+    _line_attr_sel  = st.multiselect("فلتر بـ Attribute Set", _line_attr_cats, placeholder="كل الأقسام", key="line_attr", label_visibility="collapsed")
+
+if _line_attr_sel:
+    _df_line = _df_line[_df_line["Attribute Set"].isin(_line_attr_sel)]
+
+top6_cats = _df_line.groupby("Attribute Set")["Value After Discounts"].sum().nlargest(6).index.tolist()
 fig_line = go.Figure()
 for i, cat in enumerate(top6_cats):
-    cat_data = df[df["Attribute Set"]==cat].groupby("Day")["Value After Discounts"].sum()
+    cat_data = _df_line[_df_line["Attribute Set"]==cat].groupby("Day")["Value After Discounts"].sum()
     vals = [cat_data.get(d,0) for d in days_sorted]
     fig_line.add_trace(go.Scatter(x=days_sorted, y=vals, name=cat.replace("&amp;","&"),
         mode="lines+markers", line=dict(color=PAL[i], width=2),
