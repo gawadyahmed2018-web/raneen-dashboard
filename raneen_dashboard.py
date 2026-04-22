@@ -920,17 +920,56 @@ if _line_attr_sel:
     _df_line = _df_line[_df_line["Attribute Set"].isin(_line_attr_sel)]
 
 top6_cats = _df_line.groupby("Attribute Set")["Value After Discounts"].sum().nlargest(6).index.tolist()
+
+# ألوان متباينة بشكل واضح
+DISTINCT_COLORS = [
+    "#2563eb",  # أزرق غامق
+    "#e63946",  # أحمر
+    "#2a9e75",  # أخضر
+    "#f4a621",  # برتقالي/ذهبي
+    "#9333ea",  # بنفسجي
+    "#0ea5e9",  # سماوي
+    "#ef4444",  # أحمر فاتح
+    "#16a34a",  # أخضر غامق
+    "#f59e0b",  # عنبر
+    "#6366f1",  # بنفسجي فاتح
+]
+
+DASH_STYLES = ["solid","dot","dash","dashdot","longdash","solid","dot","dash","dashdot","longdash"]
+MARKER_SYMBOLS = ["circle","square","diamond","triangle-up","cross","star","circle","square","diamond","triangle-up"]
+
 fig_line = go.Figure()
 for i, cat in enumerate(top6_cats):
     cat_data = _df_line[_df_line["Attribute Set"]==cat].groupby("Day")["Value After Discounts"].sum()
     vals = [cat_data.get(d,0) for d in days_sorted]
-    fig_line.add_trace(go.Scatter(x=days_sorted, y=vals, name=cat.replace("&amp;","&"),
-        mode="lines+markers", line=dict(color=PAL[i], width=2),
-        marker=dict(size=5), hovertemplate="%{y:,.0f} ج<extra>"+cat.replace("&amp;","&")+"</extra>"))
-fig_line.update_layout(height=320, margin=dict(t=10,b=10,l=10,r=10),
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02),
-    yaxis=dict(tickformat=",.0f"), xaxis=dict(showgrid=False))
+    cat_clean = cat.replace("&amp;","&")
+    fig_line.add_trace(go.Scatter(
+        x=days_sorted, y=vals,
+        name=cat_clean,
+        mode="lines+markers",
+        line=dict(color=DISTINCT_COLORS[i % len(DISTINCT_COLORS)], width=2.5, dash=DASH_STYLES[i % len(DASH_STYLES)]),
+        marker=dict(size=7, symbol=MARKER_SYMBOLS[i % len(MARKER_SYMBOLS)],
+                    color=DISTINCT_COLORS[i % len(DISTINCT_COLORS)],
+                    line=dict(width=1.5, color="white")),
+        hovertemplate=(
+            "<span style='font-size:14px;font-weight:700'>" + cat_clean + "</span><br>"
+            "<b>%{x}</b><br>"
+            "المبيعات: <b>%{y:,.0f} ج</b>"
+            "<extra></extra>"
+        )
+    ))
+fig_line.update_layout(
+    height=340,
+    margin=dict(t=10,b=10,l=10,r=10),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=12)),
+    yaxis=dict(tickformat=",.0f", gridcolor="rgba(128,128,128,0.1)"),
+    xaxis=dict(showgrid=False),
+    hoverlabel=dict(bgcolor="white", font_size=13, font_family="sans-serif",
+                    bordercolor="rgba(0,0,0,0.1)"),
+    hovermode="x unified"
+)
 st.plotly_chart(fig_line, use_container_width=True)
 
 # ── TOP PRODUCTS with heatbar ────────────────────────────────────────────────
