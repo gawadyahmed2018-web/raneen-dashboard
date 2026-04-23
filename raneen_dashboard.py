@@ -166,7 +166,13 @@ def get_period_targets(date_from, date_to):
 
 @st.cache_data(ttl=3600)
 def load_default():
-    return pd.read_csv(DEFAULT_DATA_URL)
+    try:
+        df = pd.read_csv(DEFAULT_DATA_URL)
+        if df.empty or len(df.columns) < 5:
+            raise ValueError("الملف فاضي أو تالف")
+        return df
+    except Exception as e:
+        raise Exception(f"تعذّر تحميل البيانات الافتراضية — تأكد إن الملف موجود على GitHub أو ارفع شيت جديد من القايمة الجانبية. ({e})")
 
 @st.cache_data(ttl=300)
 def load_spend():
@@ -327,6 +333,9 @@ with st.sidebar:
                 buf = _io.StringIO()
                 df_to_save.to_csv(buf, index=False)
                 raw = buf.getvalue().encode("utf-8")
+                # تأكد إن الداتا مش فاضية قبل الرفع
+                if len(raw) < 100:
+                    return False
                 encoded = base64.b64encode(raw).decode()
                 api_url = f"https://api.github.com/repos/{repo}/contents/{path}"
                 r_get = requests.get(api_url, headers=gh_headers)
@@ -377,7 +386,8 @@ if using_default:
             df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
 
     except Exception as e:
-        st.error(f"تعذّر تحميل البيانات الافتراضية: {e}")
+        st.warning("⚠️ لا توجد بيانات محفوظة — ارفع شيت ماجينتو من القايمة الجانبية لتشغيل الداشبورد.")
+        st.info("💡 بعد الرفع، الداشبورد بيتحدث أوتوماتيك ويحفظ الداتا للمرات الجاية.")
         st.stop()
 else:
     df_full = process(uploaded)
