@@ -164,15 +164,16 @@ def get_period_targets(date_from, date_to):
         current  += _dt.timedelta(days=1)
     return {"total": t_total, "mp": t_mp, "retail": t_retail, "budget": t_budget}
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=600, show_spinner=False)
 def load_default():
-    try:
-        df = pd.read_csv(DEFAULT_DATA_URL)
-        if df.empty or len(df.columns) < 5:
-            raise ValueError("الملف فاضي أو تالف")
-        return df
-    except Exception as e:
-        raise Exception(f"تعذّر تحميل البيانات الافتراضية — تأكد إن الملف موجود على GitHub أو ارفع شيت جديد من القايمة الجانبية. ({e})")
+    import requests as _req, io as _sio
+    r = _req.get(DEFAULT_DATA_URL, timeout=15)
+    if r.status_code != 200:
+        return None
+    df = pd.read_csv(_sio.StringIO(r.text))
+    if df.empty or len(df.columns) < 5:
+        return None
+    return df
 
 @st.cache_data(ttl=300)
 def load_spend():
@@ -359,8 +360,7 @@ with st.sidebar:
             df_processed.drop(columns=["_dt","_ym"], errors="ignore", inplace=True)
 
             if ok_default:
-                load_default.clear()  # امسح الكاش عشان يجيب الداتا الجديدة
-                load_spend.clear()    # امسح كاش الانفاق كمان
+                st.cache_data.clear()  # امسح كل الكاش عشان يجيب الداتا الجديدة
                 msg = "✅ اتحفظ كـ Default أوتوماتيك!"
                 if monthly_saved:
                     msg += f"  |  📁 أرشيف: {', '.join(monthly_saved)}"
@@ -379,16 +379,14 @@ with st.sidebar:
 using_default = uploaded is None
 
 if using_default:
-    try:
-        df_full = load_default()
-        df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
-        if "Day" not in df_full.columns:
-            df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
-
-    except Exception as e:
+    df_full = load_default()
+    if df_full is None:
         st.warning("⚠️ لا توجد بيانات محفوظة — ارفع شيت ماجينتو من القايمة الجانبية لتشغيل الداشبورد.")
         st.info("💡 بعد الرفع، الداشبورد بيتحدث أوتوماتيك ويحفظ الداتا للمرات الجاية.")
         st.stop()
+    df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
+    if "Day" not in df_full.columns:
+        df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
 else:
     df_full = process(uploaded)
 all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
