@@ -1170,7 +1170,7 @@ prod_html = (
     prod_rows + '</table></div>'
 )
 st.markdown(prod_html, unsafe_allow_html=True)
-_tp_dl = top_prod_all[["Name","Qty","Revenue","Days","Pct"]].rename(columns={"Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
+_tp_dl = top_prod_all[["SKU","Name","Qty","Revenue","Days","Pct"]].rename(columns={"SKU":"SKU","Name":"المنتج","Qty":"الكمية","Revenue":"المبيعات (ج)","Days":"أيام الظهور","Pct":"نسبة الأداء %"})
 st.download_button(f"⬇ تصدير Excel — {len(top_prod_all)} منتج", to_excel(_tp_dl), "أعلى_المنتجات.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.markdown('<p class="section-title">خصومات الكوبونات</p>', unsafe_allow_html=True)
 
