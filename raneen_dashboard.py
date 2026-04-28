@@ -747,6 +747,15 @@ else:
 _r_vals2  = [_r_daily.get(d,0)  for d in days_sorted]
 _mp_vals2 = [_mp_daily.get(d,0) for d in days_sorted]
 
+_tot_vals2 = [_r_vals2[i] + _mp_vals2[i] for i in range(len(days_sorted))]
+
+fig_ts2.add_trace(go.Scatter(
+    x=days_sorted, y=_tot_vals2, name="الإجمالي",
+    mode="lines+markers",
+    line=dict(color="#2a9e75", width=2, dash="dot"),
+    marker=dict(size=6, symbol="diamond", line=dict(width=1.5, color="white")),
+    hovertemplate="<b>%{x}</b><br>الإجمالي: <b>%{y:,.0f}</b><extra></extra>"
+))
 fig_ts2.add_trace(go.Scatter(
     x=days_sorted, y=_r_vals2, name="Raneen",
     mode="lines+markers",
