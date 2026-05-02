@@ -450,16 +450,18 @@ if using_default:
         if _prev_month > 0 and _prev_month not in _prev_months:
             _prev_months.append(_prev_month)
         _extra_dfs = []
-        for _pm in sorted(_prev_months):
-            _arc_file = f"archive/raneen_{_cur_year}_{str(_pm).zfill(2)}.csv"
+        # جيب أبريل بس (الشهر اللي قبل مايو مباشرة) — مش كل الشهور
+        _target_month = max(_cur_months) - 1
+        if _target_month > 0:
+            _arc_file = f"archive/raneen_{_cur_year}_{str(_target_month).zfill(2)}.csv"
             try:
                 token = st.secrets.get("GITHUB_TOKEN", "")
-                _api = f"https://api.github.com/repos/gawadyahmed2018-web/raneen-dashboard/contents/{_arc_file}"
-                _hdrs = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-                _r = _req2.get(_api, headers=_hdrs, timeout=10)
-                if _r.status_code == 200:
-                    _csv = _b64_2.b64decode(_r.json()["content"].replace("\n",""))
-                    _df_arc = pd.read_csv(_sio2.BytesIO(_csv))
+                # استخدم raw URL بدل API عشان أسهل
+                _raw_url = f"https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/{_arc_file}"
+                _hdrs2 = {"Authorization": f"token {token}"}
+                _r2 = _req2.get(_raw_url, headers=_hdrs2, timeout=15)
+                if _r2.status_code == 200 and len(_r2.content) > 100:
+                    _df_arc = pd.read_csv(_sio2.StringIO(_r2.text))
                     _df_arc["Purchase Date"] = pd.to_datetime(_df_arc["Purchase Date"], errors="coerce")
                     if "Day" not in _df_arc.columns:
                         _df_arc["Day"] = _df_arc["Purchase Date"].dt.strftime("%b %d")
@@ -469,9 +471,9 @@ if using_default:
         if _extra_dfs:
             df_full = pd.concat([*_extra_dfs, df_full], ignore_index=True)
             df_full = df_full.sort_values("Purchase Date").reset_index(drop=True)
-            st.sidebar.success(f"✅ تم دمج {len(_extra_dfs)} شهر من الأرشيف")
+            st.sidebar.success(f"✅ تم دمج داتا الشهر السابق")
         else:
-            st.sidebar.warning(f"⚠️ DEBUG: cur_months={_cur_months}, prev={_prev_months}, year={_cur_year}")
+            st.sidebar.warning(f"⚠️ DEBUG: شهر={_target_month}, ملف={_arc_file}")
 else:
     df_full = process(uploaded)
 all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
