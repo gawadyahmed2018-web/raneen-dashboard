@@ -438,6 +438,34 @@ if using_default:
     df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
     if "Day" not in df_full.columns:
         df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
+
+    # Auto-merge with previous months from archive
+    if _archive_path is None:  # only when showing default (not when user picked archive)
+        import requests as _req2, io as _sio2, base64 as _b64_2, datetime as _dt2
+        _cur_months = df_full["Purchase Date"].dt.month.unique().tolist()
+        _cur_year   = df_full["Purchase Date"].dt.year.mode()[0] if not df_full.empty else _dt2.date.today().year
+        _all_months = list(range(1, max(_cur_months) + 1))
+        _prev_months = [m for m in _all_months if m not in _cur_months]
+        _extra_dfs = []
+        for _pm in _prev_months:
+            _arc_path = f"archive/raneen_{_cur_year}_{str(_pm).zfill(2)}.csv"
+            try:
+                token = st.secrets.get("GITHUB_TOKEN", "")
+                _api = f"https://api.github.com/repos/gawadyahmed2018-web/raneen-dashboard/contents/{_arc_path}"
+                _hdrs = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+                _r = _req2.get(_api, headers=_hdrs, timeout=10)
+                if _r.status_code == 200:
+                    _csv = _b64_2.b64decode(_r.json()["content"].replace("\n",""))
+                    _df_arc = pd.read_csv(_sio2.BytesIO(_csv))
+                    _df_arc["Purchase Date"] = pd.to_datetime(_df_arc["Purchase Date"], errors="coerce")
+                    if "Day" not in _df_arc.columns:
+                        _df_arc["Day"] = _df_arc["Purchase Date"].dt.strftime("%b %d")
+                    _extra_dfs.append(_df_arc)
+            except Exception:
+                pass
+        if _extra_dfs:
+            df_full = pd.concat([*_extra_dfs, df_full], ignore_index=True)
+            df_full = df_full.sort_values("Purchase Date").reset_index(drop=True)
 else:
     df_full = process(uploaded)
 all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
