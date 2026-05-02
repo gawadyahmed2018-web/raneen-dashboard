@@ -469,6 +469,9 @@ if using_default:
         if _extra_dfs:
             df_full = pd.concat([*_extra_dfs, df_full], ignore_index=True)
             df_full = df_full.sort_values("Purchase Date").reset_index(drop=True)
+            st.sidebar.success(f"✅ تم دمج {len(_extra_dfs)} شهر من الأرشيف")
+        else:
+            st.sidebar.warning(f"⚠️ DEBUG: cur_months={_cur_months}, prev={_prev_months}, year={_cur_year}")
 else:
     df_full = process(uploaded)
 all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
