@@ -390,7 +390,6 @@ with st.sidebar:
             uploaded.seek(0)
 
     st.markdown("---")
-    st.markdown("**📁 عرض شهر من الأرشيف**")
     _archive_months = {
         "الشهر الحالي (Default)": None,
         "أبريل 2026":   "archive/raneen_2026_04.csv",
@@ -471,9 +470,7 @@ if using_default:
         if _extra_dfs:
             df_full = pd.concat([*_extra_dfs, df_full], ignore_index=True)
             df_full = df_full.sort_values("Purchase Date").reset_index(drop=True)
-            st.sidebar.success(f"✅ تم دمج داتا الشهر السابق")
-        else:
-            st.sidebar.warning(f"⚠️ DEBUG: شهر={_target_month}, ملف={_arc_file}")
+
 else:
     df_full = process(uploaded)
 all_days = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
