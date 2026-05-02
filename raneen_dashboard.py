@@ -390,6 +390,16 @@ with st.sidebar:
             uploaded.seek(0)
 
     st.markdown("---")
+    st.markdown("**📁 عرض شهر من الأرشيف**")
+    _archive_months = {
+        "الشهر الحالي (Default)": None,
+        "أبريل 2026":   "archive/raneen_2026_04.csv",
+        "مارس 2026":    "archive/raneen_2026_03.csv",
+        "فبراير 2026":  "archive/raneen_2026_02.csv",
+        "يناير 2026":   "archive/raneen_2026_01.csv",
+    }
+    _sel_archive = st.selectbox("اختار شهر", list(_archive_months.keys()), label_visibility="collapsed")
+    st.markdown("---")
     st.markdown("**كيفية الاستخدام:**")
     st.markdown("1. نزّل الشيت من ماجينتو\n2. ارفعه هنا\n3. الداشبورد بيظهر فوراً")
 
@@ -397,11 +407,34 @@ with st.sidebar:
 using_default = uploaded is None
 
 if using_default:
-    df_full = load_default()
-    if df_full is None:
-        st.warning("⚠️ لا توجد بيانات محفوظة — ارفع شيت ماجينتو من القايمة الجانبية لتشغيل الداشبورد.")
-        st.info("💡 بعد الرفع، الداشبورد بيتحدث أوتوماتيك ويحفظ الداتا للمرات الجاية.")
-        st.stop()
+    # Check if user selected an archive month
+    _archive_path = _archive_months.get(_sel_archive)
+    if _archive_path:
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def load_archive(path):
+            import requests as _req, io as _sio, base64 as _b64
+            try:
+                token = st.secrets.get("GITHUB_TOKEN", "")
+                api_url = f"https://api.github.com/repos/gawadyahmed2018-web/raneen-dashboard/contents/{path}"
+                headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+                r = _req.get(api_url, headers=headers, timeout=15)
+                if r.status_code == 200:
+                    csv_bytes = _b64.b64decode(r.json()["content"].replace("\n",""))
+                    return pd.read_csv(_sio.BytesIO(csv_bytes))
+            except Exception:
+                pass
+            return None
+        df_full = load_archive(_archive_path)
+        if df_full is None:
+            st.warning(f"⚠️ مش لاقي الأرشيف — تأكد إن الملف موجود على GitHub.")
+            st.stop()
+        st.sidebar.success(f"📁 عارض: {_sel_archive}")
+    else:
+        df_full = load_default()
+        if df_full is None:
+            st.warning("⚠️ لا توجد بيانات محفوظة — ارفع شيت ماجينتو من القايمة الجانبية لتشغيل الداشبورد.")
+            st.info("💡 بعد الرفع، الداشبورد بيتحدث أوتوماتيك ويحفظ الداتا للمرات الجاية.")
+            st.stop()
     df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
     if "Day" not in df_full.columns:
         df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
