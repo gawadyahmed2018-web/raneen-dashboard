@@ -76,7 +76,7 @@ def clean_money(s):
         errors="coerce"
     ).fillna(0)
 
-@st.cache_data
+@st.cache_data(max_entries=1)
 def process(file):
     df = pd.read_csv(file)
     df = df[df["Purchase Point"].str.contains("Raneen", na=False)].copy()
@@ -92,6 +92,20 @@ def process(file):
     )
     df["Purchase Date"] = pd.to_datetime(df["Purchase Date"], format="%b %d, %Y, %I:%M:%S %p", errors="coerce")
     df["Day"] = df["Purchase Date"].dt.strftime("%b %d")
+    # Keep only needed columns to save memory
+    _keep_cols = [
+        "Order #", "Purchase Date", "Day", "Order Status",
+        "Marketplace Seller", "Seller_Raw", "Attribute Set", "Name", "SKU",
+        "Qty Ordered", "Item Price", "Row Total", "Discount Amount",
+        "Value After Discounts", "Coupon Code", "Customer Region",
+        "Payment Method", "Purchase Point"
+    ]
+    _keep_cols = [c for c in _keep_cols if c in df.columns]
+    df = df[_keep_cols].copy()
+    # Optimize dtypes
+    for _col in ["Qty Ordered","Item Price","Row Total","Discount Amount","Value After Discounts"]:
+        if _col in df.columns:
+            df[_col] = pd.to_numeric(df[_col], errors="coerce").astype("float32")
     return df
 
 def get_price_changes(df):
@@ -164,7 +178,7 @@ def get_period_targets(date_from, date_to):
         current  += _dt.timedelta(days=1)
     return {"total": t_total, "mp": t_mp, "retail": t_retail, "budget": t_budget}
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False, max_entries=1)
 def load_default():
     import requests as _req, io as _sio, base64 as _b64
     # أولاً: جرب GitHub API بالـ token (أكثر موثوقية)
@@ -188,6 +202,9 @@ def load_default():
         if r.status_code == 200:
             df = pd.read_csv(_sio.StringIO(r.text))
             if not df.empty and len(df.columns) >= 5:
+                # Optimize memory
+                for _c in df.select_dtypes("float64").columns:
+                    df[_c] = df[_c].astype("float32")
                 return df
     except Exception:
         pass
