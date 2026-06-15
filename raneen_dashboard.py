@@ -559,6 +559,28 @@ with _hcol2:
         pass
 st.markdown("---")
 
+# ── CHANNEL FILTER ────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+div[data-testid="stHorizontalBlock"] > div:has(> div[data-testid="stButtonGroup"]) button {
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    padding: 8px 24px !important;
+    border-radius: 8px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+_ch_col1, _ch_col2 = st.columns([3, 2])
+with _ch_col1:
+    _channel_filter = st.radio(
+        "فلتر بالقناة",
+        ["📊 الكل", "🏪 Retail (Raneen)", "🏬 Marketplace (MP)"],
+        horizontal=True,
+        key="channel_filter",
+        label_visibility="collapsed"
+    )
+
 col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
 with col_dr1:
     date_from = st.date_input("من يوم", value=all_dates[0], min_value=all_dates[0], max_value=all_dates[-1], key="date_from")
@@ -574,6 +596,12 @@ st.markdown("---")
 
 days_range = [d for d in all_days if date_from <= pd.to_datetime(d+" 2026").date() <= date_to]
 df = df_full[df_full["Day"].isin(days_range)].copy()
+
+# Apply channel filter
+if _channel_filter == "🏪 Retail (Raneen)":
+    df = df[df["Marketplace Seller"] == "raneen"].copy()
+elif _channel_filter == "🏬 Marketplace (MP)":
+    df = df[df["Marketplace Seller"] == "MP"].copy()
 
 # Apply category mapping
 _cat_map = load_mapping()
