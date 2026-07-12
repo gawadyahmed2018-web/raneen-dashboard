@@ -210,7 +210,7 @@ def load_default():
         pass
     return None
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600, show_spinner=False)
 def load_spend():
     """
     جيب عمودي التاريخ (col B = index 1) والانفاق (col M = index 12).
@@ -258,7 +258,7 @@ def load_spend():
     except Exception:
         return pd.DataFrame(columns=["Date","Total_Spend","Day"])
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400, max_entries=1, show_spinner=False)
 def load_mapping():
     try:
         df_m = pd.read_csv(MAPPING_URL)
@@ -472,7 +472,6 @@ if using_default:
             _arc_file = f"archive/raneen_{_cur_year}_{str(_target_month).zfill(2)}.csv"
             try:
                 token = st.secrets.get("GITHUB_TOKEN", "")
-                # استخدم raw URL بدل API عشان أسهل
                 _raw_url = f"https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/{_arc_file}"
                 _hdrs2 = {"Authorization": f"token {token}"}
                 _r2 = _req2.get(_raw_url, headers=_hdrs2, timeout=15)
@@ -481,12 +480,17 @@ if using_default:
                     _df_arc["Purchase Date"] = pd.to_datetime(_df_arc["Purchase Date"], errors="coerce")
                     if "Day" not in _df_arc.columns:
                         _df_arc["Day"] = _df_arc["Purchase Date"].dt.strftime("%b %d")
+                    # Optimize memory
+                    for _mc in _df_arc.select_dtypes("float64").columns:
+                        _df_arc[_mc] = _df_arc[_mc].astype("float32")
                     _extra_dfs.append(_df_arc)
             except Exception:
                 pass
         if _extra_dfs:
             df_full = pd.concat([*_extra_dfs, df_full], ignore_index=True)
             df_full = df_full.sort_values("Purchase Date").reset_index(drop=True)
+            del _extra_dfs
+            import gc; gc.collect()
 
 else:
     df_full = process(uploaded)
@@ -608,7 +612,10 @@ _cat_map = load_mapping()
 df["Main Category"] = df["Attribute Set"].str.replace("&amp;","&").map(_cat_map).fillna("Other")
 
 # Load spend data from Google Sheet and filter by selected date range
-df_spend = load_spend()
+try:
+    df_spend = load_spend()
+except Exception:
+    df_spend = pd.DataFrame(columns=["Date","Total_Spend","Day"])
 df_spend_filtered = df_spend[
     (df_spend["Date"].dt.date >= date_from) &
     (df_spend["Date"].dt.date <= date_to)
