@@ -110,6 +110,226 @@ def process(file):
     return df
 
 
+# ── CONSTANTS ────────────────────────────────────────────────────────────────
+DEFAULT_DATA_URL = "https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/raneen_default_data.csv"
+
+@st.cache_data(ttl=300, show_spinner=False, max_entries=1)
+def load_default():
+    import requests as _req, io as _sio
+    _keep = ["Order #","Purchase Date","Day","Marketplace Seller","Seller_Raw",
+             "Attribute Set","Name","SKU","Qty Ordered","Item Price","Row Total",
+             "Discount Amount","Value After Discounts","Coupon Code","Customer Region","Payment Method"]
+    try:
+        _r = _req.get(DEFAULT_DATA_URL, timeout=15)
+        if _r.status_code == 200:
+            df = pd.read_csv(_sio.StringIO(_r.text), usecols=lambda c: c in _keep)
+            for _c in df.select_dtypes("float64").columns:
+                df[_c] = df[_c].astype("float32")
+            for _c in ["Attribute Set","Marketplace Seller","Customer Region","Payment Method"]:
+                if _c in df.columns: df[_c] = df[_c].astype("category")
+            return df
+    except Exception:
+        pass
+    return None
+
+# ── SIDEBAR ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 📊 Raneen Analytics")
+    st.markdown("---")
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#d85a30,#e87a50);border-radius:10px;padding:1rem;text-align:center;margin-bottom:.75rem;box-shadow:0 3px 10px rgba(216,90,48,.35)">
+      <p style="color:white;font-size:15px;font-weight:800;margin:0 0 4px">⬆️ أضف الشيت المحدَّث هنا</p>
+      <p style="color:rgba(255,255,255,.85);font-size:11px;margin:0">CSV من ماجينتو ← الداشبورد يتحدث فوراً</p>
+    </div>
+    """, unsafe_allow_html=True)
+    uploaded = st.file_uploader("", type=["csv"], label_visibility="collapsed")
+
+    if uploaded is not None:
+        import base64, requests as _greq, io as _gio
+        try:
+            token = st.secrets["GITHUB_TOKEN"]
+            repo  = "gawadyahmed2018-web/raneen-dashboard"
+            gh_headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+            uploaded.seek(0)
+            df_processed = process(uploaded)
+
+            def _upload_to_github(path, df_to_save, label):
+                buf = _gio.StringIO()
+                df_to_save.to_csv(buf, index=False)
+                raw = buf.getvalue().encode("utf-8")
+                encoded = base64.b64encode(raw).decode()
+                api_url = f"https://api.github.com/repos/{repo}/contents/{path}"
+                r_get = _greq.get(api_url, headers=gh_headers)
+                sha = r_get.json().get("sha", "") if r_get.status_code == 200 else ""
+                payload = {"message": f"Auto-update {label}", "content": encoded, "sha": sha}
+                r_put = _greq.put(api_url, headers=gh_headers, json=payload)
+                return r_put.status_code in [200, 201]
+
+            ok_default = _upload_to_github("raneen_default_data.csv", df_processed, "default data")
+            df_processed["_dt"] = pd.to_datetime(df_processed["Purchase Date"], errors="coerce")
+            df_processed["_ym"] = df_processed["_dt"].dt.to_period("M").astype(str)
+            monthly_saved = []
+            for ym in df_processed["_ym"].dropna().unique():
+                df_month = df_processed[df_processed["_ym"] == ym].drop(columns=["_dt","_ym"], errors="ignore")
+                fname = "archive/raneen_" + ym.replace("-", "_") + ".csv"
+                if _upload_to_github(fname, df_month, ym):
+                    monthly_saved.append(ym)
+            df_processed.drop(columns=["_dt","_ym"], errors="ignore", inplace=True)
+            if ok_default:
+                msg = "✅ اتحفظ كـ Default أوتوماتيكي!"
+                if monthly_saved: msg += f"  |  📁 أرشيف: {', '.join(monthly_saved)}"
+                st.success(msg)
+            else:
+                st.warning("⚠️ الداشبورد شغال بس التحديث التلقائي فشل")
+            st.cache_data.clear()
+            uploaded.seek(0)
+        except Exception:
+            uploaded.seek(0)
+
+    st.markdown("---")
+    _archive_months = {
+        "الشهر الحالي (Default)": None,
+        "يونيو 2026":   "archive/raneen_2026_06.csv",
+        "مايو 2026":    "archive/raneen_2026_05.csv",
+        "أبريل 2026":   "archive/raneen_2026_04.csv",
+    }
+    _sel_archive = st.selectbox("اختار شهر", list(_archive_months.keys()), label_visibility="collapsed")
+    _merge_prev = st.checkbox("📅 ضم الشهر السابق", value=False, help="يدمج الشهر السابق مع الحالي")
+    st.markdown("---")
+    st.markdown("**كيفية الاستخدام:**")
+    st.markdown("1. نزّل الشيت من ماجينتو\n2. ارفعه هنا\n3. الداشبورد بيظهر فوراً")
+
+# ── MAIN ──────────────────────────────────────────────────────────────────────
+using_default = uploaded is None
+
+if using_default:
+    _archive_path = _archive_months.get(_sel_archive)
+    if _archive_path:
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def load_archive(path):
+            import requests as _req2, io as _sio2, base64 as _b64
+            try:
+                token = st.secrets.get("GITHUB_TOKEN", "")
+                _api = f"https://api.github.com/repos/gawadyahmed2018-web/raneen-dashboard/contents/{path}"
+                _hdrs = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+                _r = _req2.get(_api, headers=_hdrs, timeout=15)
+                if _r.status_code == 200:
+                    _csv = _b64.b64decode(_r.json()["content"].replace("\n",""))
+                    return pd.read_csv(_sio2.BytesIO(_csv))
+            except Exception:
+                pass
+            return None
+        df_full = load_archive(_archive_path)
+        if df_full is None:
+            st.warning(f"⚠️ مش لاقي الأرشيف")
+            st.stop()
+        st.sidebar.success(f"📁 عارض: {_sel_archive}")
+    else:
+        df_full = load_default()
+        if df_full is None:
+            st.warning("⚠️ لا توجد بيانات — ارفع شيت ماجينتو من القايمة الجانبية")
+            st.stop()
+
+    df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
+    if "Day" not in df_full.columns:
+        df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
+
+    if _merge_prev and _sel_archive == "الشهر الحالي (Default)":
+        import requests as _req3, io as _sio3
+        try:
+            _cur_m = int(df_full["Purchase Date"].dt.month.mode()[0])
+            _cur_y = int(df_full["Purchase Date"].dt.year.mode()[0])
+            _prev_m = _cur_m - 1
+            if _prev_m > 0:
+                _prev_url = f"https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/archive/raneen_{_cur_y}_{str(_prev_m).zfill(2)}.csv"
+                _tok = st.secrets.get("GITHUB_TOKEN", "")
+                _rp = _req3.get(_prev_url, headers={"Authorization": f"token {_tok}"}, timeout=15)
+                if _rp.status_code == 200:
+                    _df_prev = pd.read_csv(_sio3.StringIO(_rp.text))
+                    _df_prev["Purchase Date"] = pd.to_datetime(_df_prev["Purchase Date"], errors="coerce")
+                    if "Day" not in _df_prev.columns:
+                        _df_prev["Day"] = _df_prev["Purchase Date"].dt.strftime("%b %d")
+                    df_full = pd.concat([_df_prev, df_full], ignore_index=True)
+                    df_full = df_full.sort_values("Purchase Date").reset_index(drop=True)
+                    del _df_prev
+                    import gc; gc.collect()
+                    st.sidebar.success("✅ تم دمج الشهر السابق")
+        except Exception:
+            pass
+else:
+    df_full = process(uploaded)
+
+all_days  = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
+all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
+
+# ── HEADER ────────────────────────────────────────────────────────────────────
+_hcol1, _hcol2 = st.columns([5, 1])
+with _hcol1:
+    st.markdown("# 📊 Raneen Sales Dashboard")
+    st.markdown('<p style="background:linear-gradient(90deg,#1F3864,#3266ad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:19px;font-weight:800;margin-top:-8px">✦ Created by Ahmed Khamis</p>', unsafe_allow_html=True)
+with _hcol2:
+    try:
+        from PIL import Image
+        _logo = Image.open("/mnt/user-data/outputs/raneen_logo.jpg")
+        st.image(_logo, width=110)
+    except Exception:
+        pass
+st.markdown("---")
+
+# ── CHANNEL FILTER ────────────────────────────────────────────────────────────
+_channel_filter = st.radio(
+    "فلتر بالقناة",
+    ["📊 الكل", "🏪 Retail (Raneen)", "🏬 Marketplace (MP)"],
+    horizontal=True, key="channel_filter", label_visibility="collapsed"
+)
+
+# ── DATE FILTER ───────────────────────────────────────────────────────────────
+col_dr1, col_dr2, col_dr3 = st.columns([2,2,3])
+with col_dr1:
+    date_from = st.date_input("من يوم", value=all_dates[0], min_value=all_dates[0], max_value=all_dates[-1], key="date_from")
+with col_dr2:
+    date_to = st.date_input("إلى يوم", value=all_dates[-1], min_value=all_dates[0], max_value=all_dates[-1], key="date_to")
+with col_dr3:
+    st.markdown("")
+    st.markdown("")
+    n_days_selected = (date_to - date_from).days + 1
+    st.info(f"📅 **{date_from.strftime('%b %d')}  →  {date_to.strftime('%b %d')}**  ·  {n_days_selected} يوم")
+
+st.markdown("---")
+
+days_range = [d for d in all_days if date_from <= pd.to_datetime(d+" 2026").date() <= date_to]
+df = df_full[df_full["Day"].isin(days_range)].copy()
+
+# Apply channel filter
+if _channel_filter == "🏪 Retail (Raneen)":
+    df = df[df["Marketplace Seller"] == "raneen"].copy()
+elif _channel_filter == "🏬 Marketplace (MP)":
+    df = df[df["Marketplace Seller"] == "MP"].copy()
+
+date_min = df["Purchase Date"].dt.date.min()
+date_max = df["Purchase Date"].dt.date.max()
+
+total   = df["Value After Discounts"].sum()
+df_r    = df[df["Marketplace Seller"]=="raneen"]
+df_mp   = df[df["Marketplace Seller"]=="MP"]
+raneen  = df_r["Value After Discounts"].sum()
+mp      = df_mp["Value After Discounts"].sum()
+
+total_orders  = df["Order #"].nunique()
+raneen_orders = df_r["Order #"].nunique()
+mp_orders     = df_mp["Order #"].nunique()
+
+total_qty  = df["Qty Ordered"].sum()
+raneen_qty = df_r["Qty Ordered"].sum()
+mp_qty     = df_mp["Qty Ordered"].sum()
+
+aov_total  = total  / total_orders  if total_orders  else 0
+aov_raneen = raneen / raneen_orders if raneen_orders else 0
+aov_mp     = mp     / mp_orders     if mp_orders     else 0
+
+days_sorted = days_range
+
+
 # ── RANEEN VS MP ──────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">Raneen vs MP — مبيعات يومية</p>', unsafe_allow_html=True)
 
