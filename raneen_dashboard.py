@@ -34,106 +34,6 @@ NEEDED_COLS = ["Order #","Purchase Date","Day","Marketplace Seller","Seller_Raw"
                "Attribute Set","Name","SKU","Qty Ordered","Item Price","Row Total",
                "Discount Amount","Value After Discounts","Coupon Code","Customer Region","Payment Method"]
 
-MAIN_CAT_MAP = {
-    "Air Conditioner":"تكييف","Air Cooler":"تبريد","Fans":"مراوح",
-    "Refrigerator":"ثلاجات","Washing Machine":"غسالات","Dishwasher":"غسالات",
-    "Oven & Cooker":"أفران","Microwave":"مايكروويف","Water Heater":"سخانات",
-    "Television":"تلفزيونات","Home Theater":"صوتيات",
-    "Laptop":"لابتوب","Desktop":"كمبيوتر","Mobile":"موبايل","Tablet":"تابلت",
-    "Wardrobe":"فرنتشر","Sofa":"فرنتشر","Beds":"فرنتشر","TV Table":"فرنتشر",
-    "Shoe Rack":"فرنتشر","Center Table":"فرنتشر","Storage":"فرنتشر",
-    "Storage Units":"فرنتشر","Desks":"فرنتشر","Chairs":"فرنتشر",
-    "Living Rooms":"فرنتشر","Side Table":"فرنتشر","Bean Bags":"فرنتشر",
-    "Office Chairs":"فرنتشر","Shelves":"فرنتشر","Garden Furniture":"فرنتشر",
-    "Dressing Table":"فرنتشر","Kitchen Rooms":"فرنتشر","TV Stand & Accessories":"فرنتشر",
-    "Commode & Drawer Units":"فرنتشر","Clothes Hangers":"فرنتشر","Nursery Furniture & Decor":"فرنتشر",
-    "Mattress":"مراتب","Pillows":"مراتب","Bed Sheets":"مراتب",
-    "Towels":"تكستايل","Curtain":"تكستايل","Carpets":"تكستايل",
-    "Cookware":"أدوات مطبخ","Kitchen Appliances":"أدوات مطبخ","Blender":"أدوات مطبخ",
-    "Coffee Machine":"أدوات مطبخ","Juicer":"أدوات مطبخ","Kettle":"أدوات مطبخ",
-    "Iron":"عناية ملابس","Vacuum":"منظفات","Hair Care":"عناية شخصية",
-    "Shaving & Grooming":"عناية شخصية","Personal Care":"عناية شخصية",
-    "Toys":"ألعاب","Baby Products":"أطفال",
-}
-
-def get_main_cat(attr_set):
-    return MAIN_CAT_MAP.get(str(attr_set), "أخرى")
-
-@st.cache_data(ttl=86400, max_entries=1, show_spinner=False)
-def load_mapping():
-    try:
-        import io as _io3
-        df_m = pd.read_csv(MAPPING_URL)
-        return df_m.set_index("attribute_set_name")["first_category"].to_dict()
-    except Exception:
-        return {}
-
-MONTHLY_TARGETS = {
-    1:  {"budget": 6_038_416,  "spend_pct": 3.60, "total": 168_716_207, "mp": 56_605_296,  "retail": 112_110_911},
-    2:  {"budget": 3_533_095,  "spend_pct": 3.20, "total": 111_789_600, "mp": 45_003_367,  "retail":  66_786_233},
-    3:  {"budget": 4_214_038,  "spend_pct": 3.00, "total": 140_954_260, "mp": 50_164_513,  "retail":  90_789_747},
-    4:  {"budget": 4_124_552,  "spend_pct": 3.20, "total": 127_069_401, "mp": 54_536_761,  "retail":  72_532_640},
-    5:  {"budget": 4_916_567,  "spend_pct": 3.30, "total": 147_585_977, "mp": 56_404_107,  "retail":  91_181_870},
-    6:  {"budget": 7_583_190,  "spend_pct": 3.60, "total": 211_373_442, "mp": 90_894_279,  "retail": 120_479_163},
-    7:  {"budget": 5_966_908,  "spend_pct": 3.40, "total": 174_637_356, "mp": 69_000_867,  "retail": 105_636_489},
-    8:  {"budget": 5_489_475,  "spend_pct": 3.30, "total": 166_923_634, "mp": 63_342_181,  "retail": 103_581_453},
-    9:  {"budget": 4_981_784,  "spend_pct": 3.40, "total": 145_805_090, "mp": 62_152_786,  "retail":  83_652_304},
-    10: {"budget": 4_365_925,  "spend_pct": 3.10, "total": 141_978_168, "mp": 59_902_368,  "retail":  82_075_800},
-    11: {"budget":14_731_264,  "spend_pct": 4.35, "total": 338_156_399, "mp":148_855_992,  "retail": 189_300_407},
-    12: {"budget": 3_871_710,  "spend_pct": 3.10, "total": 125_906_478, "mp": 52_929_212,  "retail":  72_977_266},
-}
-
-GSHEET_SPEND_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTvCm7gn0G_PlQTKLV-gIRkuCXbfkQ956kNrK6jmUdgqRfL5LfI6x5IhJKs6l0a0g/pub?gid=1982732416&single=true&output=csv"
-
-def get_period_targets(month, n_days, total_days_in_month):
-    t = MONTHLY_TARGETS.get(month, {})
-    if not t: return 0, 0, 0, 0, 0
-    ratio = n_days / total_days_in_month
-    return (round(t["total"]*ratio), round(t["retail"]*ratio),
-            round(t["mp"]*ratio), round(t["budget"]*ratio), t["spend_pct"])
-
-@st.cache_data(ttl=300, max_entries=1, show_spinner=False)
-def load_spend():
-    try:
-        import io as _io4, datetime as _dt2
-        df_raw = pd.read_csv(GSHEET_SPEND_URL, header=None)
-        rows, cur_year = [], _dt2.date.today().year
-        for _, row in df_raw.iterrows():
-            date_val  = str(row.iloc[1]).strip()
-            spend_val = str(row.iloc[12]).strip()
-            if not date_val or date_val in ["nan","B"] or not spend_val or spend_val in ["nan","M"]:
-                continue
-            try:
-                dt = pd.to_datetime(date_val + f" {cur_year}", format="%d-%b %Y", errors="coerce")
-                if pd.isna(dt): continue
-                spend = float(spend_val.replace(",",""))
-                rows.append({"Date": dt.date(), "Total_Spend": spend, "Day": dt.strftime("%b %d")})
-            except Exception:
-                continue
-        return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Date","Total_Spend","Day"])
-    except Exception:
-        return pd.DataFrame(columns=["Date","Total_Spend","Day"])
-
-def _ach_color(pct):
-    if pct >= 100: return "#0a7a4e"
-    if pct >= 80:  return "#1a5fa8"
-    if pct >= 60:  return "#9a6400"
-    return "#b91c1c"
-
-def _make_gauge(pct, label, value_str, target_str, color):
-    bar_color = _ach_color(pct)
-    bar_w = min(pct, 100)
-    icon = "✅" if pct >= 100 else "🔶" if pct >= 80 else "🔴"
-    return (
-        '<div style="background:#f8f9fa;border-radius:10px;padding:.8rem 1rem;margin-bottom:4px">'
-        + f'<p style="font-size:11px;color:#888;margin:0 0 4px">{label}</p>'
-        + f'<p style="font-size:20px;font-weight:600;color:{bar_color};margin:0">{value_str}</p>'
-        + f'<p style="font-size:10px;color:#aaa;margin:2px 0 6px">تارجت: {target_str}</p>'
-        + '<div style="background:#e0e0e0;border-radius:4px;height:8px">'
-        + f'<div style="width:{bar_w:.0f}%;background:{bar_color};height:8px;border-radius:4px"></div></div>'
-        + f'<p style="font-size:12px;font-weight:700;color:{bar_color};margin:4px 0 0">{icon} {pct:.1f}%</p>'
-        + '</div>'
-    )
 
 def optimize(df):
     for c in ["Value After Discounts","Qty Ordered","Item Price","Row Total","Discount Amount"]:
@@ -143,8 +43,10 @@ def optimize(df):
         if c in df.columns:
             df[c] = df[c].astype("category")
     if "Attribute Set" in df.columns:
-        df["Main Category"] = df["Attribute Set"].astype(str).map(get_main_cat).fillna("أخرى")
-        df["Main Category"] = df["Main Category"].astype("category")
+        _map = load_mapping()
+        if _map:
+            df["Main Category"] = df["Attribute Set"].astype(str).map(_map).fillna("Other")
+            df["Main Category"] = df["Main Category"].astype("category")
     return df
 
 
