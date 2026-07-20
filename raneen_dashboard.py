@@ -33,6 +33,31 @@ NEEDED_COLS = ["Order #","Purchase Date","Day","Marketplace Seller","Seller_Raw"
                "Attribute Set","Name","SKU","Qty Ordered","Item Price","Row Total",
                "Discount Amount","Value After Discounts","Coupon Code","Customer Region","Payment Method"]
 
+MAIN_CAT_MAP = {
+    "Air Conditioner":"تكييف","Air Cooler":"تبريد","Fans":"مراوح",
+    "Refrigerator":"ثلاجات","Washing Machine":"غسالات","Dishwasher":"غسالات",
+    "Oven & Cooker":"أفران","Microwave":"مايكروويف","Water Heater":"سخانات",
+    "Television":"تلفزيونات","Home Theater":"صوتيات",
+    "Laptop":"لابتوب","Desktop":"كمبيوتر","Mobile":"موبايل","Tablet":"تابلت",
+    "Wardrobe":"فرنتشر","Sofa":"فرنتشر","Beds":"فرنتشر","TV Table":"فرنتشر",
+    "Shoe Rack":"فرنتشر","Center Table":"فرنتشر","Storage":"فرنتشر",
+    "Storage Units":"فرنتشر","Desks":"فرنتشر","Chairs":"فرنتشر",
+    "Living Rooms":"فرنتشر","Side Table":"فرنتشر","Bean Bags":"فرنتشر",
+    "Office Chairs":"فرنتشر","Shelves":"فرنتشر","Garden Furniture":"فرنتشر",
+    "Dressing Table":"فرنتشر","Kitchen Rooms":"فرنتشر","TV Stand & Accessories":"فرنتشر",
+    "Commode & Drawer Units":"فرنتشر","Clothes Hangers":"فرنتشر","Nursery Furniture & Decor":"فرنتشر",
+    "Mattress":"مراتب","Pillows":"مراتب","Bed Sheets":"مراتب",
+    "Towels":"تكستايل","Curtain":"تكستايل","Carpets":"تكستايل",
+    "Cookware":"أدوات مطبخ","Kitchen Appliances":"أدوات مطبخ","Blender":"أدوات مطبخ",
+    "Coffee Machine":"أدوات مطبخ","Juicer":"أدوات مطبخ","Kettle":"أدوات مطبخ",
+    "Iron":"عناية ملابس","Vacuum":"منظفات","Hair Care":"عناية شخصية",
+    "Shaving & Grooming":"عناية شخصية","Personal Care":"عناية شخصية",
+    "Toys":"ألعاب","Baby Products":"أطفال",
+}
+
+def get_main_cat(attr_set):
+    return MAIN_CAT_MAP.get(str(attr_set), "أخرى")
+
 def optimize(df):
     for c in ["Value After Discounts","Qty Ordered","Item Price","Row Total","Discount Amount"]:
         if c in df.columns:
@@ -40,7 +65,78 @@ def optimize(df):
     for c in ["Attribute Set","Marketplace Seller","Customer Region","Payment Method"]:
         if c in df.columns:
             df[c] = df[c].astype("category")
+    if "Attribute Set" in df.columns:
+        df["Main Category"] = df["Attribute Set"].astype(str).map(get_main_cat).fillna("أخرى")
+        df["Main Category"] = df["Main Category"].astype("category")
     return df
+
+
+MONTHLY_TARGETS = {
+    1:  {"budget": 6_038_416,  "spend_pct": 3.60, "total": 168_716_207, "mp": 56_605_296,  "retail": 112_110_911},
+    2:  {"budget": 3_533_095,  "spend_pct": 3.20, "total": 111_789_600, "mp": 45_003_367,  "retail":  66_786_233},
+    3:  {"budget": 4_214_038,  "spend_pct": 3.00, "total": 140_954_260, "mp": 50_164_513,  "retail":  90_789_747},
+    4:  {"budget": 4_124_552,  "spend_pct": 3.20, "total": 127_069_401, "mp": 54_536_761,  "retail":  72_532_640},
+    5:  {"budget": 4_916_567,  "spend_pct": 3.30, "total": 147_585_977, "mp": 56_404_107,  "retail":  91_181_870},
+    6:  {"budget": 7_583_190,  "spend_pct": 3.60, "total": 211_373_442, "mp": 90_894_279,  "retail": 120_479_163},
+    7:  {"budget": 5_966_908,  "spend_pct": 3.40, "total": 174_637_356, "mp": 69_000_867,  "retail": 105_636_489},
+    8:  {"budget": 5_489_475,  "spend_pct": 3.30, "total": 166_923_634, "mp": 63_342_181,  "retail": 103_581_453},
+    9:  {"budget": 4_981_784,  "spend_pct": 3.40, "total": 145_805_090, "mp": 62_152_786,  "retail":  83_652_304},
+    10: {"budget": 4_365_925,  "spend_pct": 3.10, "total": 141_978_168, "mp": 59_902_368,  "retail":  82_075_800},
+    11: {"budget":14_731_264,  "spend_pct": 4.35, "total": 338_156_399, "mp":148_855_992,  "retail": 189_300_407},
+    12: {"budget": 3_871_710,  "spend_pct": 3.10, "total": 125_906_478, "mp": 52_929_212,  "retail":  72_977_266},
+}
+
+GSHEET_SPEND_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTvCm7gn0G_PlQTKLV-gIRkuCXbfkQ956kNrK6jmUdgqRfL5LfI6x5IhJKs6l0a0g/pub?gid=1982732416&single=true&output=csv"
+
+def get_period_targets(month, n_days, total_days_in_month):
+    t = MONTHLY_TARGETS.get(month, {})
+    if not t: return 0, 0, 0, 0, 0
+    ratio = n_days / total_days_in_month
+    return (round(t["total"]*ratio), round(t["retail"]*ratio),
+            round(t["mp"]*ratio), round(t["budget"]*ratio), t["spend_pct"])
+
+@st.cache_data(ttl=300, max_entries=1, show_spinner=False)
+def load_spend():
+    try:
+        import io as _io2, datetime as _dt2
+        df_raw = pd.read_csv(GSHEET_SPEND_URL, header=None)
+        rows, cur_year = [], _dt2.date.today().year
+        for _, row in df_raw.iterrows():
+            date_val  = str(row.iloc[1]).strip()
+            spend_val = str(row.iloc[12]).strip()
+            if not date_val or date_val in ["nan","B"] or not spend_val or spend_val in ["nan","M"]:
+                continue
+            try:
+                dt = pd.to_datetime(date_val + f" {cur_year}", format="%d-%b %Y", errors="coerce")
+                if pd.isna(dt): continue
+                spend = float(spend_val.replace(",",""))
+                rows.append({"Date": dt.date(), "Total_Spend": spend, "Day": dt.strftime("%b %d")})
+            except Exception:
+                continue
+        return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Date","Total_Spend","Day"])
+    except Exception:
+        return pd.DataFrame(columns=["Date","Total_Spend","Day"])
+
+def _ach_color(pct):
+    if pct >= 100: return "#0a7a4e"
+    if pct >= 80:  return "#1a5fa8"
+    if pct >= 60:  return "#9a6400"
+    return "#b91c1c"
+
+def _make_gauge(pct, label, value_str, target_str, color):
+    bar_color = _ach_color(pct)
+    bar_w = min(pct, 100)
+    icon = "✅" if pct >= 100 else "🔶" if pct >= 80 else "🔴"
+    return (
+        '<div style="background:#f8f9fa;border-radius:10px;padding:.8rem 1rem;margin-bottom:4px">'
+        + f'<p style="font-size:11px;color:#888;margin:0 0 4px">{label}</p>'
+        + f'<p style="font-size:20px;font-weight:600;color:{bar_color};margin:0">{value_str}</p>'
+        + f'<p style="font-size:10px;color:#aaa;margin:2px 0 6px">تارجت: {target_str}</p>'
+        + '<div style="background:#e0e0e0;border-radius:4px;height:8px">'
+        + f'<div style="width:{bar_w:.0f}%;background:{bar_color};height:8px;border-radius:4px"></div></div>'
+        + f'<p style="font-size:12px;font-weight:700;color:{bar_color};margin:4px 0 0">{icon} {pct:.1f}%</p>'
+        + '</div>'
+    )
 
 @st.cache_data(max_entries=1, show_spinner=False)
 def process(file):
@@ -112,9 +208,8 @@ with st.sidebar:
     st.markdown("---")
     _archives = {
         "الشهر الحالي": None,
-        "يونيو 2026": "archive/raneen_2026_06.csv",
-        "مايو 2026":  "archive/raneen_2026_05.csv",
-        "أبريل 2026": "archive/raneen_2026_04.csv",
+        "مايو 2026":    "archive/raneen_2026_05.csv",
+        "أبريل 2026":   "archive/raneen_2026_04.csv",
     }
     _sel = st.selectbox("اختار شهر", list(_archives.keys()), label_visibility="collapsed")
     _merge = st.checkbox("📅 ضم الشهر السابق", value=False)
@@ -230,6 +325,36 @@ with m7: st.markdown(f'<div class="metric-card"><p class="metric-label">إجما
 with m8: st.markdown(f'<div class="metric-card" style="border-left:4px solid #3266ad"><p class="metric-label">قطع Raneen</p><p class="metric-value" style="color:#3266ad">{raneen_qty:,}</p></div>', unsafe_allow_html=True)
 with m9: st.markdown(f'<div class="metric-card" style="border-left:4px solid #d85a30"><p class="metric-label">قطع MP</p><p class="metric-value" style="color:#d85a30">{mp_qty:,}</p></div>', unsafe_allow_html=True)
 
+
+# ── TARGETS & ACHIEVEMENT ─────────────────────────────────────────────────────
+import calendar as _cal
+_sel_month = date_from.month
+_n_sel_days = (date_to - date_from).days + 1
+_tdim = _cal.monthrange(date_from.year, _sel_month)[1]
+_tgt_total, _tgt_retail, _tgt_mp, _tgt_budget, _tgt_spend_pct = get_period_targets(_sel_month, _n_sel_days, _tdim)
+
+if _tgt_total > 0:
+    st.markdown('<p class="section-title">نسبة تحقيق التارجت</p>', unsafe_allow_html=True)
+    _ach_total  = total  / _tgt_total  * 100 if _tgt_total  > 0 else 0
+    _ach_raneen = raneen / _tgt_retail * 100 if _tgt_retail > 0 else 0
+    _ach_mp     = mp     / _tgt_mp    * 100 if _tgt_mp    > 0 else 0
+    gc1, gc2, gc3 = st.columns(3)
+    with gc1: st.markdown(_make_gauge(_ach_total,  "إجمالي المبيعات", f"{total/1e6:.2f}M ج",  f"{_tgt_total/1e6:.2f}M ج",  "#1F3864"), unsafe_allow_html=True)
+    with gc2: st.markdown(_make_gauge(_ach_raneen, "Raneen",           f"{raneen/1e6:.2f}M ج", f"{_tgt_retail/1e6:.2f}M ج", "#3266ad"), unsafe_allow_html=True)
+    with gc3: st.markdown(_make_gauge(_ach_mp,     "MP",               f"{mp/1e6:.2f}M ج",     f"{_tgt_mp/1e6:.2f}M ج",     "#d85a30"), unsafe_allow_html=True)
+    try:
+        df_spend = load_spend()
+        if not df_spend.empty:
+            total_spend = df_spend[df_spend["Day"].isin(days_sorted)]["Total_Spend"].sum()
+            if total_spend > 0:
+                sc1,sc2,sc3,sc4 = st.columns(4)
+                with sc1: st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي الإنفاق</p><p class="metric-value">{total_spend:,.0f} ج</p></div>', unsafe_allow_html=True)
+                with sc2: st.markdown(f'<div class="metric-card"><p class="metric-label">البادجت المحدد</p><p class="metric-value">{_tgt_budget:,.0f} ج</p></div>', unsafe_allow_html=True)
+                with sc3: st.markdown(f'<div class="metric-card"><p class="metric-label">نسبة الإنفاق الفعلية</p><p class="metric-value">{total_spend/total*100:.2f}%</p></div>', unsafe_allow_html=True)
+                with sc4: st.markdown(f'<div class="metric-card"><p class="metric-label">التارجت المسموح</p><p class="metric-value">{_tgt_spend_pct:.1f}%</p></div>', unsafe_allow_html=True)
+    except Exception:
+        pass
+
 # ── DAILY CHART ───────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">Raneen vs MP — مبيعات يومية</p>', unsafe_allow_html=True)
 daily_r   = df[df["Marketplace Seller"]=="raneen"].groupby("Day")["Value After Discounts"].sum()
@@ -248,18 +373,44 @@ st.plotly_chart(fig_ts, use_container_width=True, config={"displayModeBar":False
 
 # ── CATEGORY CHART ────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">مبيعات كل قسم — Raneen vs MP</p>', unsafe_allow_html=True)
-cat_all = df.groupby(["Attribute Set","Marketplace Seller"])["Value After Discounts"].sum().unstack(fill_value=0).reset_index()
+
+# Main Category filter
+main_cats = sorted(df["Main Category"].dropna().unique().tolist()) if "Main Category" in df.columns else []
+cf0,cf1,cf2,cf3 = st.columns([2,2,1,1])
+with cf0:
+    _sel_main_cat = st.selectbox("الـ Main Category", ["كل الأقسام"] + main_cats, label_visibility="collapsed", key="main_cat_sel")
+with cf1: search_cat = st.text_input("ابحث بالقسم", placeholder="Air Conditioner...", label_visibility="collapsed")
+with cf2: ch_f = st.selectbox("فلتر", ["كل الأقسام","Raneen + MP","Raneen فقط","MP فقط"], label_visibility="collapsed")
+with cf3: _show_mc = st.checkbox("عرض Main Categories", value=False)
+
+# Filter by main category
+df_for_cat = df.copy()
+if _sel_main_cat != "كل الأقسام" and "Main Category" in df_for_cat.columns:
+    df_for_cat = df_for_cat[df_for_cat["Main Category"] == _sel_main_cat]
+
+# Main Categories summary
+if _show_mc and "Main Category" in df.columns:
+    mc_all = df.groupby(["Main Category","Marketplace Seller"])["Value After Discounts"].sum().unstack(fill_value=0).reset_index()
+    if "MP" not in mc_all.columns: mc_all["MP"]=0
+    if "raneen" not in mc_all.columns: mc_all["raneen"]=0
+    mc_all["Total"] = mc_all["MP"] + mc_all["raneen"]
+    mc_all = mc_all.sort_values("Total", ascending=False)
+    max_mc = mc_all["Total"].max() or 1
+    mc_rows = ""
+    for _, r in mc_all.iterrows():
+        tot = r["Total"] or 1
+        rp = r["raneen"]/tot*100; mpp = r["MP"]/tot*100
+        mc_rows += f'<tr style="border-bottom:.5px solid #f0f0f0"><td style="padding:5px 8px;font-weight:600">{r["Main Category"]}</td><td style="padding:5px 8px;text-align:right;color:#3266ad">{r["raneen"]:,.0f}</td><td style="padding:5px 8px;text-align:right;color:#d85a30">{r["MP"]:,.0f}</td><td style="padding:5px 8px;text-align:right;font-weight:600">{r["Total"]:,.0f}</td><td style="padding:5px 8px;min-width:140px"><div style="display:flex;height:10px;border-radius:4px;overflow:hidden;width:{int(r["Total"]/max_mc*100)}%;min-width:4px"><div style="width:{rp:.0f}%;background:#3266ad"></div><div style="width:{mpp:.0f}%;background:#d85a30"></div></div><span style="font-size:10px;color:#555">{rp:.0f}% R · {mpp:.0f}% MP</span></td></tr>'
+    st.markdown(f'<div style="margin-bottom:1rem"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="background:#1F3864"><th style="padding:7px 8px;color:white;text-align:left">Main Category</th><th style="padding:7px 8px;color:#b5d4f4;text-align:right">Raneen</th><th style="padding:7px 8px;color:#f0997b;text-align:right">MP</th><th style="padding:7px 8px;color:white;text-align:right">الإجمالي</th><th style="padding:7px 8px;color:white">Raneen vs MP</th></tr>{mc_rows}</table></div>', unsafe_allow_html=True)
+
+cat_all = df_for_cat.groupby(["Attribute Set","Marketplace Seller"])["Value After Discounts"].sum().unstack(fill_value=0).reset_index()
 if "MP" not in cat_all.columns: cat_all["MP"]=0
 if "raneen" not in cat_all.columns: cat_all["raneen"]=0
 cat_all["Total"] = cat_all["MP"] + cat_all["raneen"]
 cat_all = cat_all.sort_values("Total", ascending=False)
 
-cf1,cf2 = st.columns([2,1])
-with cf1: search_cat = st.text_input("ابحث بالقسم", placeholder="Air Conditioner", label_visibility="collapsed")
-with cf2: ch_f = st.selectbox("فلتر", ["كل الأقسام","Raneen + MP","Raneen فقط","MP فقط"], label_visibility="collapsed")
-
 cat_ch = cat_all.copy()
-if search_cat: cat_ch = cat_ch[cat_ch["Attribute Set"].str.lower().str.contains(search_cat.lower())]
+if search_cat: cat_ch = cat_ch[cat_ch["Attribute Set"].astype(str).str.lower().str.contains(search_cat.lower())]
 if ch_f=="Raneen + MP": cat_ch = cat_ch[(cat_ch["raneen"]>0)&(cat_ch["MP"]>0)]
 elif ch_f=="Raneen فقط": cat_ch = cat_ch[(cat_ch["raneen"]>0)&(cat_ch["MP"]==0)]
 elif ch_f=="MP فقط": cat_ch = cat_ch[(cat_ch["MP"]>0)&(cat_ch["raneen"]==0)]
@@ -303,11 +454,18 @@ st.markdown(f"""<div style="max-height:480px;overflow-y:auto"><table style="widt
 
 # ── TOP PRODUCTS ──────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">أعلى المنتجات طلباً</p>', unsafe_allow_html=True)
-tp_c1,tp_c2 = st.columns([2,1])
-with tp_c1: _sel_cat_tp = st.selectbox("فلتر القسم", ["كل الأقسام"]+sorted(df["Attribute Set"].dropna().unique().tolist()), label_visibility="collapsed")
+tp_c0,tp_c1,tp_c2 = st.columns([2,2,1])
+with tp_c0:
+    _mc_list = ["كل الأقسام"] + sorted(df["Main Category"].dropna().unique().tolist()) if "Main Category" in df.columns else ["كل الأقسام"]
+    _sel_mc_tp = st.selectbox("Main Category", _mc_list, label_visibility="collapsed", key="mc_tp")
+with tp_c1:
+    _df_tp_src = df[df["Main Category"]==_sel_mc_tp] if _sel_mc_tp != "كل الأقسام" and "Main Category" in df.columns else df
+    _sel_cat_tp = st.selectbox("القسم", ["كل الأقسام"]+sorted(_df_tp_src["Attribute Set"].dropna().unique().tolist()), label_visibility="collapsed", key="cat_tp")
 with tp_c2: _sel_perf = st.selectbox("الأداء", ["كل المنتجات","⭐ ممتاز (90%+)","✅ جيد (80-90%)","🔴 ضعيف (<70%)"], label_visibility="collapsed")
 
 _df_tp = df.copy()
+if _sel_mc_tp != "كل الأقسام" and "Main Category" in _df_tp.columns:
+    _df_tp = _df_tp[_df_tp["Main Category"]==_sel_mc_tp]
 if _sel_cat_tp != "كل الأقسام": _df_tp = _df_tp[_df_tp["Attribute Set"]==_sel_cat_tp]
 top_prod = _df_tp.groupby("Name").agg(SKU=("SKU","first"), Qty=("Qty Ordered","sum"), Revenue=("Value After Discounts","sum"), Days=("Day","nunique")).sort_values("Qty",ascending=False).reset_index()
 total_d = len(days_sorted)
