@@ -134,11 +134,25 @@ def process(file):
 
 @st.cache_data(ttl=300, max_entries=1, show_spinner=False)
 def load_default():
-    import requests as _r, io as _io
+    import requests as _r, io as _io, base64 as _b64
+    # Method 1: GitHub API (works with private repos)
+    try:
+        token = st.secrets.get("GITHUB_TOKEN", "")
+        if token:
+            api = "https://api.github.com/repos/gawadyahmed2018-web/raneen-dashboard/contents/raneen_default_data.csv"
+            hdrs = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+            res = _r.get(api, headers=hdrs, timeout=15)
+            if res.status_code == 200:
+                csv_bytes = _b64.b64decode(res.json()["content"].replace("\n", ""))
+                df = pd.read_csv(_io.BytesIO(csv_bytes))
+                return optimize(df)
+    except Exception:
+        pass
+    # Method 2: Raw URL fallback
     try:
         r = _r.get(DEFAULT_URL, timeout=15)
-        if r.status_code == 200:
-            df = pd.read_csv(_io.StringIO(r.text), usecols=lambda c: c in NEEDED_COLS)
+        if r.status_code == 200 and len(r.content) > 200:
+            df = pd.read_csv(_io.StringIO(r.text))
             return optimize(df)
     except Exception:
         pass
