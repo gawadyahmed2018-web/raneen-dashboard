@@ -321,35 +321,6 @@ if _tgt_total > 0:
     st.markdown('<p class="section-title">نسبة تحقيق التارجت</p>', unsafe_allow_html=True)
     _ach_total  = total  / _tgt_total  * 100 if _tgt_total  > 0 else 0
     _ach_raneen = raneen / _tgt_retail * 100 if _tgt_retail > 0 else 0
-    _ach_mp     = mp     / _tgt_mp    * 100 if _tgt_mp    > 0 else 0
-    gc1, gc2, gc3 = st.columns(3)
-    with gc1: st.markdown(_make_gauge(_ach_total,  "إجمالي المبيعات", f"{total/1e6:.2f}M ج",  f"{_tgt_total/1e6:.2f}M ج",  "#1F3864"), unsafe_allow_html=True)
-    with gc2: st.markdown(_make_gauge(_ach_raneen, "Raneen",           f"{raneen/1e6:.2f}M ج", f"{_tgt_retail/1e6:.2f}M ج", "#3266ad"), unsafe_allow_html=True)
-    with gc3: st.markdown(_make_gauge(_ach_mp,     "MP",               f"{mp/1e6:.2f}M ج",     f"{_tgt_mp/1e6:.2f}M ج",     "#d85a30"), unsafe_allow_html=True)
-    try:
-        df_spend = load_spend()
-        if not df_spend.empty:
-            total_spend = df_spend[df_spend["Day"].isin(days_sorted)]["Total_Spend"].sum()
-            if total_spend > 0:
-                sc1,sc2,sc3,sc4 = st.columns(4)
-                with sc1: st.markdown(f'<div class="metric-card"><p class="metric-label">إجمالي الإنفاق</p><p class="metric-value">{total_spend:,.0f} ج</p></div>', unsafe_allow_html=True)
-                with sc2: st.markdown(f'<div class="metric-card"><p class="metric-label">البادجت المحدد</p><p class="metric-value">{_tgt_budget:,.0f} ج</p></div>', unsafe_allow_html=True)
-                with sc3: st.markdown(f'<div class="metric-card"><p class="metric-label">نسبة الإنفاق الفعلية</p><p class="metric-value">{total_spend/total*100:.2f}%</p></div>', unsafe_allow_html=True)
-                with sc4: st.markdown(f'<div class="metric-card"><p class="metric-label">التارجت المسموح</p><p class="metric-value">{_tgt_spend_pct:.1f}%</p></div>', unsafe_allow_html=True)
-    except Exception:
-        pass
-
-# ── TARGETS & ACHIEVEMENT ─────────────────────────────────────────────────────
-import calendar as _cal
-_sel_month = date_from.month
-_n_sel_days = (date_to - date_from).days + 1
-_tdim = _cal.monthrange(date_from.year, _sel_month)[1]
-_tgt_total, _tgt_retail, _tgt_mp, _tgt_budget, _tgt_spend_pct = get_period_targets(_sel_month, _n_sel_days, _tdim)
-
-if _tgt_total > 0:
-    st.markdown('<p class="section-title">نسبة تحقيق التارجت</p>', unsafe_allow_html=True)
-    _ach_total  = total  / _tgt_total  * 100 if _tgt_total  > 0 else 0
-    _ach_raneen = raneen / _tgt_retail * 100 if _tgt_retail > 0 else 0
     _ach_mp     = mp     / _tgt_mp     * 100 if _tgt_mp     > 0 else 0
     gc1, gc2, gc3 = st.columns(3)
     with gc1: st.markdown(_make_gauge(_ach_total,  "إجمالي المبيعات", f"{total/1e6:.2f}M ج",  f"{_tgt_total/1e6:.2f}M ج",  "#1F3864"), unsafe_allow_html=True)
@@ -413,6 +384,29 @@ if search_cat: cat_ch = cat_ch[cat_ch["Attribute Set"].astype(str).str.lower().s
 if ch_f=="Raneen + MP":  cat_ch = cat_ch[(cat_ch["raneen"]>0)&(cat_ch["MP"]>0)]
 elif ch_f=="Raneen فقط": cat_ch = cat_ch[(cat_ch["raneen"]>0)&(cat_ch["MP"]==0)]
 elif ch_f=="MP فقط":     cat_ch = cat_ch[(cat_ch["MP"]>0)&(cat_ch["raneen"]==0)]
+
+# ── Category bar chart ──
+_chart_d = cat_ch.head(15)
+if len(_chart_d) > 0:
+    _fig_cat = go.Figure()
+    _fig_cat.add_trace(go.Bar(name="Raneen", y=_chart_d["Attribute Set"], x=_chart_d["raneen"], orientation="h", marker_color="#3266ad", hovertemplate="%{x:,.0f} ج<extra>Raneen</extra>"))
+    _fig_cat.add_trace(go.Bar(name="MP", y=_chart_d["Attribute Set"], x=_chart_d["MP"], orientation="h", marker_color="#d85a30", hovertemplate="%{x:,.0f} ج<extra>MP</extra>"))
+    _fig_cat.update_layout(barmode="group", height=max(300,len(_chart_d)*34), margin=dict(t=10,b=10,l=10,r=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h",yanchor="bottom",y=1.02), xaxis=dict(tickformat=",.0f"))
+    st.plotly_chart(_fig_cat, use_container_width=True, config={"displayModeBar":False})
+
+# ── Category table ──
+_cdl1, _cdl2 = st.columns([3,1])
+with _cdl1: st.caption(f"عرض {len(cat_ch)} من {len(cat_all)} قسم")
+with _cdl2:
+    _cat_xls = cat_ch[["Attribute Set","raneen","MP","Total"]].rename(columns={"Attribute Set":"القسم","raneen":"Raneen (ج)","MP":"MP (ج)","Total":"الإجمالي (ج)"})
+    st.download_button("⬇ Excel", to_excel(_cat_xls), "أقسام.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+_max_tot = cat_ch["Total"].max() or 1
+_cat_rows = ""
+for _ci,(_, _cr) in enumerate(cat_ch.iterrows(), 1):
+    _tot=_cr["Total"] or 1; _rp=_cr["raneen"]/_tot*100; _mpp=_cr["MP"]/_tot*100; _bw=int(_cr["Total"]/_max_tot*100)
+    _cat_rows += f'<tr style="border-bottom:.5px solid #f0f0f0"><td style="padding:5px 8px;color:#aaa;font-size:11px">{_ci}</td><td style="padding:5px 8px;font-weight:500">{_cr["Attribute Set"]}</td><td style="padding:5px 8px;text-align:right;color:#3266ad">{_cr["raneen"]:,.0f}</td><td style="padding:5px 8px;text-align:right;color:#d85a30">{_cr["MP"]:,.0f}</td><td style="padding:5px 8px;text-align:right;font-weight:600">{_cr["Total"]:,.0f}</td><td style="padding:5px 8px"><div style="display:flex;height:8px;border-radius:4px;overflow:hidden;width:{_bw}%;min-width:4px"><div style="width:{_rp:.0f}%;background:#3266ad"></div><div style="width:{_mpp:.0f}%;background:#d85a30"></div></div><span style="font-size:10px;color:#888">{_rp:.0f}% R · {_mpp:.0f}% MP</span></td></tr>'
+st.markdown(f'<div style="max-height:420px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="background:#1F3864;position:sticky;top:0"><th style="padding:7px 8px;color:white;font-size:11px">#</th><th style="padding:7px 8px;color:white;font-size:11px;text-align:left">القسم</th><th style="padding:7px 8px;color:#b5d4f4;text-align:right;font-size:11px">Raneen</th><th style="padding:7px 8px;color:#f0997b;text-align:right;font-size:11px">MP</th><th style="padding:7px 8px;color:white;text-align:right;font-size:11px">الإجمالي</th><th style="padding:7px 8px;color:white;font-size:11px">Raneen vs MP</th></tr>{_cat_rows}</table></div>', unsafe_allow_html=True)
 
 # ── TOP PRODUCTS ──────────────────────────────────────────────────────────────
 st.markdown('<p class="section-title">أعلى المنتجات طلباً</p>', unsafe_allow_html=True)
