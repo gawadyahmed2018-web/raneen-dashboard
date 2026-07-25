@@ -132,15 +132,14 @@ def process(file):
     df = df[[c for c in NEEDED_COLS if c in df.columns]].copy()
     return optimize(df)
 
-@st.cache_data(ttl=300, max_entries=1, show_spinner=False)
 def load_default():
     import requests as _r, io as _io
     try:
         r = _r.get(DEFAULT_URL, timeout=20)
         if r.status_code == 200 and len(r.content) > 200:
             return optimize(pd.read_csv(_io.StringIO(r.text)))
-    except Exception:
-        pass
+    except Exception as e:
+        st.sidebar.error(f"خطأ في تحميل البيانات: {e}")
     return None
 
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
