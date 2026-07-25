@@ -360,13 +360,19 @@ st.markdown('<p class="section-title">مبيعات كل قسم — Raneen vs MP<
 
 # Filters row
 _mc_list = sorted(df["Main Category"].dropna().unique().tolist()) if "Main Category" in df.columns else []
-cf0,cf1,cf2 = st.columns([2,2,1])
+cf0,cf1,cf2,cf3 = st.columns([2,2,2,1])
 with cf0:
-    _sel_main_cat = st.selectbox("فلتر بـ Main Category", ["كل الأقسام"] + _mc_list, label_visibility="collapsed", key="main_cat_filter")
+    st.caption("🗂️ Main Category")
+    _sel_main_cat = st.selectbox("Main Category", ["كل الأقسام"] + _mc_list, label_visibility="collapsed", key="main_cat_filter")
 with cf1:
-    search_cat = st.text_input("ابحث بالقسم", placeholder="Air Conditioner...", label_visibility="collapsed")
+    st.caption("🔍 بحث بالقسم")
+    search_cat = st.text_input("بحث", placeholder="Air Conditioner...", label_visibility="collapsed")
 with cf2:
+    st.caption("⚡ فلتر القناة")
     ch_f = st.selectbox("فلتر", ["الكل","Raneen + MP","Raneen فقط","MP فقط"], label_visibility="collapsed")
+with cf3:
+    st.caption("")
+    st.markdown(f'<div style="margin-top:8px;font-size:11px;color:#888">{len(df["Attribute Set"].dropna().unique())} قسم</div>', unsafe_allow_html=True)
 
 # Apply Main Category filter
 _df_for_cat = df.copy()
