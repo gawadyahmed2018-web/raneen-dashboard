@@ -219,12 +219,6 @@ else:
 df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
 if "Day" not in df_full.columns:
     df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
-# Add Main Category
-if "Attribute Set" in df_full.columns and "Main Category" not in df_full.columns:
-    _cat_map = load_mapping()
-    if _cat_map:
-        df_full["Main Category"] = df_full["Attribute Set"].astype(str).map(_cat_map).fillna("Other")
-
 if _merge and _sel == "الشهر الحالي" and uploaded is None:
     import requests as _r3, io as _i3
     try:
@@ -246,6 +240,19 @@ if _merge and _sel == "الشهر الحالي" and uploaded is None:
 
 all_days  = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
 all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
+
+# Add Main Category (load_mapping defined later so call inline here)
+if "Attribute Set" in df_full.columns and "Main Category" not in df_full.columns:
+    try:
+        import io as _mio
+        _mr = __import__("requests").get(MAPPING_URL, timeout=10)
+        if _mr.status_code == 200:
+            import pandas as _mpd
+            _mdf = _mpd.read_csv(_mio.StringIO(_mr.text))
+            _mmap = _mdf.set_index("attribute_set_name")["first_category"].to_dict()
+            df_full["Main Category"] = df_full["Attribute Set"].astype(str).map(_mmap).fillna("Other")
+    except Exception:
+        df_full["Main Category"] = "Other"
 
 # ── HEADER ────────────────────────────────────────────────────────────────────
 st.markdown("# 📊 Raneen Sales Dashboard")
