@@ -42,11 +42,6 @@ def optimize(df):
     for c in ["Attribute Set","Marketplace Seller","Customer Region","Payment Method"]:
         if c in df.columns:
             df[c] = df[c].astype("category")
-    if "Attribute Set" in df.columns:
-        _map = load_mapping()
-        if _map:
-            df["Main Category"] = df["Attribute Set"].astype(str).map(_map).fillna("Other")
-            df["Main Category"] = df["Main Category"].astype("category")
     return df
 
 
