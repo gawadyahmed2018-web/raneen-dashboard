@@ -503,4 +503,84 @@ with pa2:
     fig_pb.update_layout(showlegend=False, height=280, margin=dict(t=10,b=10,l=10,r=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis=dict(tickfont=dict(size=9)), yaxis=dict(tickformat=",.0f"))
     st.plotly_chart(fig_pb, use_container_width=True, config={"displayModeBar":False})
 
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ── 💬 شات الأسئلة السريعة ───────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+st.markdown("---")
+st.markdown('<p class="section-title">💬 اسأل عن الداتا</p>', unsafe_allow_html=True)
+
+with st.expander("افتح الشات — اسأل عن المبيعات والمنتجات والأقسام وطرق الدفع", expanded=False):
+    st.caption("اكتب سؤالك بالعربي. أمثلة: «إجمالي المبيعات» · «أعلى منتجات» · «مقارنة رتيل وماركت بليس» · «أعلى الأقسام» · «طرق الدفع» · «المناطق» · «الكوبونات»")
+
+    _q = st.text_input("سؤالك", placeholder="اكتب سؤالك هنا...", label_visibility="collapsed", key="chat_q")
+
+    def _answer(q, df, region_map):
+        q = str(q).strip().lower()
+        if not q:
+            return None
+        ql = q.replace("أ","ا").replace("إ","ا").replace("آ","ا").replace("ى","ي").replace("ة","ه")
+
+        r_df  = df[df["Marketplace Seller"]=="raneen"]
+        mp_df = df[df["Marketplace Seller"]=="MP"]
+        tot   = df["Value After Discounts"].sum()
+        r_rev = r_df["Value After Discounts"].sum()
+        mp_rev= mp_df["Value After Discounts"].sum()
+        out = []
+
+        if any(k in ql for k in ["اجمالي","المبيعات","كام مبيعات","total","مقارن","رتيل","ريتيل","ماركت","retail","mp","قناه"]):
+            out.append(("💰 المبيعات", [
+                f"الإجمالي: {tot:,.0f} ج",
+                f"🏪 Retail (Raneen): {r_rev:,.0f} ج ({r_rev/tot*100:.1f}%) — {r_df['Order #'].nunique():,} أوردر — AOV {r_rev/r_df['Order #'].nunique() if r_df['Order #'].nunique() else 0:,.0f} ج",
+                f"🏬 MP: {mp_rev:,.0f} ج ({mp_rev/tot*100:.1f}%) — {mp_df['Order #'].nunique():,} أوردر — AOV {mp_rev/mp_df['Order #'].nunique() if mp_df['Order #'].nunique() else 0:,.0f} ج",
+                f"إجمالي القطع: {int(df['Qty Ordered'].sum()):,}",
+            ]))
+
+        if any(k in ql for k in ["منتج","منتجات","product","افضل","بيع"]):
+            top = df.groupby("Name").agg(rev=("Value After Discounts","sum"), qty=("Qty Ordered","sum")).sort_values("rev",ascending=False).head(10)
+            out.append(("🏆 أعلى 10 منتجات", [f"{i+1}. {str(n)[:45]} — {r['rev']:,.0f} ج ({int(r['qty'])} قطعة)" for i,(n,r) in enumerate(top.iterrows())]))
+
+        if any(k in ql for k in ["قسم","اقسام","category","كاتيجور","فئه"]):
+            cat = df.groupby("Attribute Set").agg(rev=("Value After Discounts","sum")).sort_values("rev",ascending=False).head(12)
+            out.append(("📦 أعلى الأقسام", [f"{i+1}. {n} — {r['rev']:,.0f} ج ({r['rev']/tot*100:.1f}%)" for i,(n,r) in enumerate(cat.iterrows())]))
+
+        if "main" in ql or "التصنيف" in ql:
+            if "Main Category" in df.columns:
+                mc = df.groupby("Main Category")["Value After Discounts"].sum().sort_values(ascending=False)
+                out.append(("🗂️ الـ Main Categories", [f"{i+1}. {n} — {v:,.0f} ج ({v/tot*100:.1f}%)" for i,(n,v) in enumerate(mc.items())]))
+
+        if any(k in ql for k in ["دفع","payment","تقسيط","كاش","فيزا","كارت","محفظه","فوري","valu","بنك"]):
+            pay = df.groupby("Payment Method").agg(rev=("Value After Discounts","sum"), orders=("Order #","nunique")).sort_values("rev",ascending=False).head(10)
+            out.append(("💳 طرق الدفع", [f"{i+1}. {n} — {r['rev']:,.0f} ج ({r['rev']/tot*100:.1f}%) — {r['orders']:,} أوردر" for i,(n,r) in enumerate(pay.iterrows())]))
+
+        if any(k in ql for k in ["منطق","محافظ","region","مدين","قاهر","جيز","اسكندري","ساحل"]):
+            dr = df.copy()
+            dr["R"] = dr["Customer Region"].map(region_map).fillna(dr["Customer Region"])
+            reg = dr.groupby("R").agg(rev=("Value After Discounts","sum"), orders=("Order #","nunique")).sort_values("rev",ascending=False).head(12)
+            out.append(("📍 أعلى المناطق", [f"{i+1}. {n} — {r['rev']:,.0f} ج ({r['rev']/tot*100:.1f}%)" for i,(n,r) in enumerate(reg.iterrows())]))
+
+        if any(k in ql for k in ["كوبون","خصم","coupon","discount","عرض","كود"]):
+            cp = df[df["Coupon Code"].notna()].copy()
+            cp["C"] = cp["Coupon Code"].astype(str).str.strip().str.upper()
+            cp = cp[~cp["C"].isin(["NAN","","NONE"])]
+            if len(cp):
+                cg = cp.groupby("C").agg(rev=("Value After Discounts","sum"), disc=("Discount Amount","sum"), orders=("Order #","nunique")).sort_values("rev",ascending=False).head(10)
+                out.append(("🎟️ الكوبونات", [f"{i+1}. {n} — {r['rev']:,.0f} ج مبيعات — خصم {r['disc']:,.0f} ج — {r['orders']:,} أوردر" for i,(n,r) in enumerate(cg.iterrows())]))
+            else:
+                out.append(("🎟️ الكوبونات", ["مفيش كوبونات في الفترة المختارة"]))
+
+        return out if out else None
+
+    if _q:
+        _res = _answer(_q, df, region_map)
+        if _res:
+            for title, lines in _res:
+                st.markdown(f"**{title}**")
+                st.markdown("\n".join(f"- {l}" for l in lines))
+                st.markdown("")
+        else:
+            st.info("مش فاهم السؤال. جرب كلمات زي: مبيعات · منتجات · أقسام · طرق دفع · مناطق · كوبونات · مقارنة رتيل وماركت بليس")
+
+
 st.markdown(f"<p style='text-align:center;color:#aaa;font-size:11px'>Raneen Analytics · {date_from} → {date_to}</p>", unsafe_allow_html=True)
