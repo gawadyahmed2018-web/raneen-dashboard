@@ -178,67 +178,66 @@ with st.sidebar:
             uploaded.seek(0)
 
     st.markdown("---")
-    _archives = {
-        "الشهر الحالي": None,
-        "مايو 2026":    "archive/raneen_2026_05.csv",
-        "أبريل 2026":   "archive/raneen_2026_04.csv",
+    st.markdown("**📅 اختار الشهور المعروضة:**")
+    _month_files = {
+        "أغسطس 2026 (الحالي)": None,
+        "يوليو 2026":  "archive/raneen_2026_07.csv",
+        "يونيو 2026":  "archive/raneen_2026_06.csv",
+        "مايو 2026":   "archive/raneen_2026_05.csv",
+        "أبريل 2026":  "archive/raneen_2026_04.csv",
     }
-    _sel = st.selectbox("اختار شهر", list(_archives.keys()), label_visibility="collapsed")
-    _merge = st.checkbox("📅 ضم الشهر السابق", value=False)
+    _selected_months = []
+    for _mname in _month_files.keys():
+        _default = (_mname == "أغسطس 2026 (الحالي)")
+        if st.checkbox(_mname, value=_default, key=f"m_{_mname}"):
+            _selected_months.append(_mname)
+    if not _selected_months:
+        _selected_months = ["أغسطس 2026 (الحالي)"]
+    st.caption(f"معروض: {len(_selected_months)} شهر")
     st.markdown("---")
     st.markdown("**كيفية الاستخدام:**")
     st.markdown("1. نزّل الشيت من ماجينتو\n2. ارفعه هنا\n3. الداشبورد بيتحدث فوراً")
 
 # ── LOAD DATA ─────────────────────────────────────────────────────────────────
+@st.cache_data(ttl=3600, max_entries=6, show_spinner=False)
+def load_archive(path):
+    import requests as _r2, io as _i2
+    try:
+        tok = st.secrets.get("GITHUB_TOKEN","")
+        url = f"https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/{path}"
+        res = _r2.get(url, headers={"Authorization":f"token {tok}"} if tok else {}, timeout=20)
+        if res.status_code == 200 and len(res.content) > 200:
+            return optimize(pd.read_csv(_i2.StringIO(res.text)))
+    except Exception:
+        pass
+    return None
+
 if uploaded is not None:
     df_full = process(uploaded)
 else:
-    _arc_path = _archives.get(_sel)
-    if _arc_path:
-        @st.cache_data(ttl=3600, max_entries=1, show_spinner=False)
-        def _load_arc(path):
-            import requests as _r2, io as _i2, base64 as _b2
-            try:
-                tok = st.secrets.get("GITHUB_TOKEN","")
-                api = f"https://api.github.com/repos/gawadyahmed2018-web/raneen-dashboard/contents/{path}"
-                res = _r2.get(api, headers={"Authorization":f"token {tok}","Accept":"application/vnd.github.v3+json"}, timeout=15)
-                if res.status_code == 200:
-                    return pd.read_csv(_i2.BytesIO(_b2.b64decode(res.json()["content"].replace("\n",""))))
-            except Exception:
-                pass
-            return None
-        df_full = _load_arc(_arc_path)
-        if df_full is None:
-            st.warning("⚠️ مش لاقي الأرشيف"); st.stop()
-        st.sidebar.success(f"📁 {_sel}")
-    else:
-        df_full = load_default()
-        if df_full is None:
-            st.warning("⚠️ لا توجد بيانات — ارفع شيت ماجينتو"); st.stop()
+    _parts = []
+    for _mname in _selected_months:
+        _path = _month_files.get(_mname)
+        if _path is None:
+            _d = load_default()
+        else:
+            _d = load_archive(_path)
+        if _d is not None and not _d.empty:
+            _parts.append(_d)
+    if not _parts:
+        st.warning("⚠️ لا توجد بيانات — ارفع شيت ماجينتو"); st.stop()
+    df_full = pd.concat(_parts, ignore_index=True) if len(_parts) > 1 else _parts[0]
+    del _parts
+    import gc; gc.collect()
 
 df_full["Purchase Date"] = pd.to_datetime(df_full["Purchase Date"], errors="coerce")
 if "Day" not in df_full.columns:
     df_full["Day"] = df_full["Purchase Date"].dt.strftime("%b %d")
-if _merge and _sel == "الشهر الحالي" and uploaded is None:
-    import requests as _r3, io as _i3
-    try:
-        cm = int(df_full["Purchase Date"].dt.month.mode()[0])
-        cy = int(df_full["Purchase Date"].dt.year.mode()[0])
-        if cm > 1:
-            url = f"https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/archive/raneen_{cy}_{str(cm-1).zfill(2)}.csv"
-            tok = st.secrets.get("GITHUB_TOKEN","")
-            rp = _r3.get(url, headers={"Authorization":f"token {tok}"}, timeout=15)
-            if rp.status_code == 200:
-                dp = pd.read_csv(_i3.StringIO(rp.text))
-                dp["Purchase Date"] = pd.to_datetime(dp["Purchase Date"], errors="coerce")
-                if "Day" not in dp.columns: dp["Day"] = dp["Purchase Date"].dt.strftime("%b %d")
-                df_full = pd.concat([dp, df_full], ignore_index=True).sort_values("Purchase Date").reset_index(drop=True)
-                del dp; gc.collect()
-                st.sidebar.success("✅ تم دمج الشهر السابق")
-    except Exception:
-        pass
+df_full = df_full.dropna(subset=["Purchase Date"]).sort_values("Purchase Date").reset_index(drop=True)
 
-all_days  = sorted(df_full["Day"].unique(), key=lambda d: pd.to_datetime(d+" 2026"))
+# Sort days by actual date (handles multiple months correctly)
+_day_order = df_full.groupby("Day")["Purchase Date"].min().sort_values()
+all_days  = _day_order.index.tolist()
 all_dates = sorted(df_full["Purchase Date"].dt.date.unique())
 
 # Add Main Category (load_mapping defined later so call inline here)
@@ -262,16 +261,18 @@ st.markdown("---")
 # Channel filter
 _ch = st.radio("القناة", ["📊 الكل","🏪 Retail","🏬 Marketplace (MP)"], horizontal=True, label_visibility="collapsed")
 
-# Date filter
+# Date filter — key depends on loaded months so it resets when selection changes
+_dkey = "_".join(sorted(_selected_months)) if uploaded is None else "upload"
 c1,c2,c3 = st.columns([2,2,3])
-with c1: date_from = st.date_input("من", value=all_dates[0], min_value=all_dates[0], max_value=all_dates[-1], key="df")
-with c2: date_to   = st.date_input("إلى", value=all_dates[-1], min_value=all_dates[0], max_value=all_dates[-1], key="dt")
+with c1: date_from = st.date_input("من", value=all_dates[0], min_value=all_dates[0], max_value=all_dates[-1], key=f"df_{_dkey}")
+with c2: date_to   = st.date_input("إلى", value=all_dates[-1], min_value=all_dates[0], max_value=all_dates[-1], key=f"dt_{_dkey}")
 with c3:
     st.markdown(""); st.markdown("")
     st.info(f"📅 **{date_from.strftime('%b %d')} → {date_to.strftime('%b %d')}** · {(date_to-date_from).days+1} يوم")
 st.markdown("---")
 
-days_range = [d for d in all_days if date_from <= pd.to_datetime(d+" 2026").date() <= date_to]
+_day_dates = df_full.groupby("Day")["Purchase Date"].min().dt.date.to_dict()
+days_range = [d for d in all_days if date_from <= _day_dates.get(d, date_from) <= date_to]
 df = df_full[df_full["Day"].isin(days_range)].copy()
 if _ch == "🏪 Retail":       df = df[df["Marketplace Seller"]=="raneen"].copy()
 elif _ch == "🏬 Marketplace (MP)": df = df[df["Marketplace Seller"]=="MP"].copy()
