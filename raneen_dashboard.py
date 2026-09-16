@@ -524,54 +524,63 @@ else:
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
+    def _gemini_call(prompt, max_tokens=2000):
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + _GEMINI_KEY
+        payload = {"contents":[{"parts":[{"text":prompt}]}],
+                   "generationConfig":{"temperature":0.1,"maxOutputTokens":max_tokens}}
+        resp = _rq.post(url, json=payload, timeout=40)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Gemini ({resp.status_code}): {resp.text[:200]}")
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
     def _run_gemini(question, df):
-        """Ask Gemini to write pandas code, run it, return result."""
         cols = list(df.columns)
-        sample_cats = df["Attribute Set"].dropna().unique()[:20].tolist() if "Attribute Set" in df.columns else []
+        sample_cats = df["Attribute Set"].dropna().unique()[:25].tolist() if "Attribute Set" in df.columns else []
         sample_pay  = df["Payment Method"].dropna().unique()[:15].tolist() if "Payment Method" in df.columns else []
+        sample_main = df["Main Category"].dropna().unique().tolist() if "Main Category" in df.columns else []
         date_min = str(df["Purchase Date"].min().date()) if "Purchase Date" in df.columns else "?"
         date_max = str(df["Purchase Date"].max().date()) if "Purchase Date" in df.columns else "?"
 
-        system = f"""أنت محلل بيانات مبيعات لشركة رنين (تجارة إلكترونية مصرية). عندك DataFrame اسمه df.
-الأعمدة المتاحة: {cols}
-شرح الأعمدة المهمة:
-- "Value After Discounts": قيمة المبيعات بعد الخصم (الإيراد) بالجنيه
-- "Marketplace Seller": "raneen" تعني Retail، "MP" تعني Marketplace
-- "Attribute Set": القسم (مثل: {sample_cats})
-- "Main Category": التصنيف الرئيسي
-- "Qty Ordered": عدد القطع
-- "Order #": رقم الأوردر (استخدم nunique للعد)
-- "Payment Method": طريقة الدفع (مثل: {sample_pay})
-- "Customer Region": المحافظة (بالإنجليزي)
-- "Coupon Code": كود الكوبون
-- "Item Price": سعر القطعة
-- "Purchase Date": تاريخ الشراء | "Day": اليوم بصيغة نصية | "Day_num": رقم اليوم في الشهر
-الفترة المتاحة في الداتا: من {date_min} إلى {date_max}
+        system = f"""You are a data analyst. You have a pandas DataFrame called df already loaded.
+Columns: {cols}
+Column meanings:
+- "Value After Discounts": revenue in EGP (after discount)
+- "Marketplace Seller": "raneen" = Retail, "MP" = Marketplace
+- "Attribute Set": product category. Examples: {sample_cats}
+- "Main Category": high-level category. Values: {sample_main}
+- "Qty Ordered": units | "Order #": order id (use nunique to count orders)
+- "Payment Method": examples: {sample_pay}
+- "Customer Region": governorate (English)
+- "Coupon Code" | "Item Price" | "Purchase Date" | "Day" | "Day_num"
+Data range: {date_min} to {date_max}
+For furniture questions use df[df["Main Category"]=="Furniture"].
 
-قواعد الفرنتشر (لو سُئلت عن الفرنتشر استخدم "Main Category" == "Furniture").
+Write Python pandas code to answer this question. Rules:
+- Use the existing df (do not reload)
+- Put the final answer in a variable named result (a string, number, or small DataFrame)
+- Keep code SHORT and COMPLETE (all brackets closed). No imports, no comments.
+- Output ONLY raw Python code, no markdown, no ``` fences.
 
-مهمتك: اكتب كود Python بلغة pandas يجاوب على سؤال المستخدم.
-- استخدم df الموجود مسبقاً (لا تعيد تحميله)
-- ضع النتيجة النهائية في متغير اسمه result (يفضل نص أو رقم أو DataFrame صغير)
-- لا تكتب import ولا تعليقات، فقط الكود
-- أرجع الكود فقط بدون أي شرح أو markdown
-
-سؤال المستخدم: {question}"""
-
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + _GEMINI_KEY
-        payload = {"contents":[{"parts":[{"text":system}]}],
-                   "generationConfig":{"temperature":0.1,"maxOutputTokens":800}}
+Question: {question}"""
         try:
-            resp = _rq.post(url, json=payload, timeout=30)
-            if resp.status_code != 200:
-                return None, f"خطأ من Gemini ({resp.status_code}): {resp.text[:200]}", None
-            data = resp.json()
-            gen_code = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            # clean markdown fences
+            gen_code = _gemini_call(system, 2000)
             gen_code = gen_code.replace("```python","").replace("```","").strip()
             return gen_code, None, None
         except Exception as e:
-            return None, f"خطأ في الاتصال: {e}", None
+            return None, str(e), None
+
+    def _explain(question, result_str):
+        """Ask Gemini to explain the numeric result in Arabic."""
+        try:
+            prompt = f"""سؤال المستخدم: {question}
+النتيجة من تحليل الداتا:
+{result_str}
+
+اكتب إجابة موجزة بالعربي المصري تشرح النتيجة للمستخدم. لو فيه أرقام رتّبها بشكل واضح. لو النتيجة تحتاج تفسير أو استنتاج، أضفه باختصار. لا تكتب كود."""
+            return _gemini_call(prompt, 1500)
+        except Exception:
+            return None
 
     def _exec_code(gen_code, df):
         import pandas as _pd
@@ -596,24 +605,32 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("بحلل..."):
                 ans_df = None
+                ans = ""
                 gen_code, err, _ = _run_gemini(_prompt, df)
                 if err:
-                    ans = f"❌ {err}"
+                    ans = f"❌ خطأ: {err}"
                 else:
                     result, exec_err = _exec_code(gen_code, df)
+                    # retry once if code failed
                     if exec_err:
-                        ans = f"حصلت مشكلة في تنفيذ الكود: {exec_err}"
-                        ans_df = None
+                        gen_code2, err2, _ = _run_gemini(_prompt + f"\n(الكود السابق فشل بالخطأ: {exec_err}. اكتب كود صحيح وكامل)", df)
+                        if not err2:
+                            result, exec_err = _exec_code(gen_code2, df)
+                    if exec_err:
+                        ans = f"معلش، محصلتش أوصل لإجابة دقيقة. جرب تصيغ السؤال بشكل تاني."
                     else:
-                        ans_df = None
+                        # Build a text representation of the result
                         if isinstance(result, pd.DataFrame):
                             ans_df = result.head(50)
-                            ans = f"النتيجة ({len(result)} صف):"
+                            result_str = result.head(30).to_string()
                         elif isinstance(result, pd.Series):
                             ans_df = result.head(50).to_frame()
-                            ans = f"النتيجة ({len(result)} صف):"
+                            result_str = result.head(30).to_string()
                         else:
-                            ans = str(result)
+                            result_str = str(result)
+                        # Ask Gemini to explain in Arabic
+                        explanation = _explain(_prompt, result_str)
+                        ans = explanation if explanation else result_str
                 st.markdown(ans)
                 if ans_df is not None:
                     st.dataframe(ans_df, use_container_width=True)
