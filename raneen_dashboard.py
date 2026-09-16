@@ -558,7 +558,7 @@ else:
 
 سؤال المستخدم: {question}"""
 
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + _GEMINI_KEY
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + _GEMINI_KEY
         payload = {"contents":[{"parts":[{"text":system}]}],
                    "generationConfig":{"temperature":0.1,"maxOutputTokens":800}}
         try:
@@ -595,6 +595,7 @@ else:
             st.markdown(_prompt)
         with st.chat_message("assistant"):
             with st.spinner("بحلل..."):
+                ans_df = None
                 gen_code, err, _ = _run_gemini(_prompt, df)
                 if err:
                     ans = f"❌ {err}"
