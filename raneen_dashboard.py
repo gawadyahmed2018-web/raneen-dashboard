@@ -557,7 +557,8 @@ else:
                 url = f"https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/{path}"
                 res = _r5.get(url, headers={"Authorization":f"token {tok}"} if tok else {}, timeout=20)
                 if res.status_code == 200 and len(res.content) > 200:
-                    parts.append(optimize(pd.read_csv(_i5.StringIO(res.text))))
+                    _need = ["Order #","Purchase Date","Marketplace Seller","Attribute Set","Name","SKU","Qty Ordered","Item Price","Value After Discounts","Discount Amount","Coupon Code","Customer Region","Payment Method"]
+                    parts.append(optimize(pd.read_csv(_i5.StringIO(res.text), usecols=lambda c: c in _need)))
             except Exception:
                 pass
         if not parts:
@@ -568,9 +569,12 @@ else:
         alldf["Month"] = alldf["Purchase Date"].dt.month
         alldf["Day_num"] = alldf["Purchase Date"].dt.day
         if "Main Category" not in alldf.columns:
-            _mp = load_mapping()
-            if _mp:
+            try:
+                _mm = pd.read_csv(_i5.StringIO(_r5.get("https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/category_mapping.csv", timeout=15).text))
+                _mp = _mm.set_index("attribute_set_name")["first_category"].to_dict()
                 alldf["Main Category"] = alldf["Attribute Set"].astype(str).map(_mp).fillna("Other")
+            except Exception:
+                alldf["Main Category"] = "Other"
         return alldf.drop_duplicates(subset=["Order #","SKU","Purchase Date","Value After Discounts"])
 
     if "chat_history" not in st.session_state:
