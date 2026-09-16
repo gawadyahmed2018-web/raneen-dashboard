@@ -505,82 +505,130 @@ with pa2:
 
 
 
+
+
 # ════════════════════════════════════════════════════════════════════════════
-# ── 💬 شات الأسئلة السريعة ───────────────────────────────────────────────────
+# ── 🤖 شات التحليل الذكي (Gemini) ────────────────────────────────────────────
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown("---")
-st.markdown('<p class="section-title">💬 اسأل عن الداتا</p>', unsafe_allow_html=True)
+st.markdown('<p class="section-title">🤖 اسأل الداتا — تحليل ذكي</p>', unsafe_allow_html=True)
 
-with st.expander("افتح الشات — اسأل عن المبيعات والمنتجات والأقسام وطرق الدفع", expanded=False):
-    st.caption("اكتب سؤالك بالعربي. أمثلة: «إجمالي المبيعات» · «أعلى منتجات» · «مقارنة رتيل وماركت بليس» · «أعلى الأقسام» · «طرق الدفع» · «المناطق» · «الكوبونات»")
+_GEMINI_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
-    _q = st.text_input("سؤالك", placeholder="اكتب سؤالك هنا...", label_visibility="collapsed", key="chat_q")
+if not _GEMINI_KEY:
+    st.info("⚠️ لتفعيل الشات الذكي: أضف GEMINI_API_KEY في إعدادات Secrets.")
+else:
+    import json as _json, requests as _rq
 
-    def _answer(q, df, region_map):
-        q = str(q).strip().lower()
-        if not q:
-            return None
-        ql = q.replace("أ","ا").replace("إ","ا").replace("آ","ا").replace("ى","ي").replace("ة","ه")
+    # Conversation history
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-        r_df  = df[df["Marketplace Seller"]=="raneen"]
-        mp_df = df[df["Marketplace Seller"]=="MP"]
-        tot   = df["Value After Discounts"].sum()
-        r_rev = r_df["Value After Discounts"].sum()
-        mp_rev= mp_df["Value After Discounts"].sum()
-        out = []
+    def _run_gemini(question, df):
+        """Ask Gemini to write pandas code, run it, return result."""
+        cols = list(df.columns)
+        sample_cats = df["Attribute Set"].dropna().unique()[:20].tolist() if "Attribute Set" in df.columns else []
+        sample_pay  = df["Payment Method"].dropna().unique()[:15].tolist() if "Payment Method" in df.columns else []
+        date_min = str(df["Purchase Date"].min().date()) if "Purchase Date" in df.columns else "?"
+        date_max = str(df["Purchase Date"].max().date()) if "Purchase Date" in df.columns else "?"
 
-        if any(k in ql for k in ["اجمالي","المبيعات","كام مبيعات","total","مقارن","رتيل","ريتيل","ماركت","retail","mp","قناه"]):
-            out.append(("💰 المبيعات", [
-                f"الإجمالي: {tot:,.0f} ج",
-                f"🏪 Retail (Raneen): {r_rev:,.0f} ج ({r_rev/tot*100:.1f}%) — {r_df['Order #'].nunique():,} أوردر — AOV {r_rev/r_df['Order #'].nunique() if r_df['Order #'].nunique() else 0:,.0f} ج",
-                f"🏬 MP: {mp_rev:,.0f} ج ({mp_rev/tot*100:.1f}%) — {mp_df['Order #'].nunique():,} أوردر — AOV {mp_rev/mp_df['Order #'].nunique() if mp_df['Order #'].nunique() else 0:,.0f} ج",
-                f"إجمالي القطع: {int(df['Qty Ordered'].sum()):,}",
-            ]))
+        system = f"""أنت محلل بيانات مبيعات لشركة رنين (تجارة إلكترونية مصرية). عندك DataFrame اسمه df.
+الأعمدة المتاحة: {cols}
+شرح الأعمدة المهمة:
+- "Value After Discounts": قيمة المبيعات بعد الخصم (الإيراد) بالجنيه
+- "Marketplace Seller": "raneen" تعني Retail، "MP" تعني Marketplace
+- "Attribute Set": القسم (مثل: {sample_cats})
+- "Main Category": التصنيف الرئيسي
+- "Qty Ordered": عدد القطع
+- "Order #": رقم الأوردر (استخدم nunique للعد)
+- "Payment Method": طريقة الدفع (مثل: {sample_pay})
+- "Customer Region": المحافظة (بالإنجليزي)
+- "Coupon Code": كود الكوبون
+- "Item Price": سعر القطعة
+- "Purchase Date": تاريخ الشراء | "Day": اليوم بصيغة نصية | "Day_num": رقم اليوم في الشهر
+الفترة المتاحة في الداتا: من {date_min} إلى {date_max}
 
-        if any(k in ql for k in ["منتج","منتجات","product","افضل","بيع"]):
-            top = df.groupby("Name").agg(rev=("Value After Discounts","sum"), qty=("Qty Ordered","sum")).sort_values("rev",ascending=False).head(10)
-            out.append(("🏆 أعلى 10 منتجات", [f"{i+1}. {str(n)[:45]} — {r['rev']:,.0f} ج ({int(r['qty'])} قطعة)" for i,(n,r) in enumerate(top.iterrows())]))
+قواعد الفرنتشر (لو سُئلت عن الفرنتشر استخدم "Main Category" == "Furniture").
 
-        if any(k in ql for k in ["قسم","اقسام","category","كاتيجور","فئه"]):
-            cat = df.groupby("Attribute Set").agg(rev=("Value After Discounts","sum")).sort_values("rev",ascending=False).head(12)
-            out.append(("📦 أعلى الأقسام", [f"{i+1}. {n} — {r['rev']:,.0f} ج ({r['rev']/tot*100:.1f}%)" for i,(n,r) in enumerate(cat.iterrows())]))
+مهمتك: اكتب كود Python بلغة pandas يجاوب على سؤال المستخدم.
+- استخدم df الموجود مسبقاً (لا تعيد تحميله)
+- ضع النتيجة النهائية في متغير اسمه result (يفضل نص أو رقم أو DataFrame صغير)
+- لا تكتب import ولا تعليقات، فقط الكود
+- أرجع الكود فقط بدون أي شرح أو markdown
 
-        if "main" in ql or "التصنيف" in ql:
-            if "Main Category" in df.columns:
-                mc = df.groupby("Main Category")["Value After Discounts"].sum().sort_values(ascending=False)
-                out.append(("🗂️ الـ Main Categories", [f"{i+1}. {n} — {v:,.0f} ج ({v/tot*100:.1f}%)" for i,(n,v) in enumerate(mc.items())]))
+سؤال المستخدم: {question}"""
 
-        if any(k in ql for k in ["دفع","payment","تقسيط","كاش","فيزا","كارت","محفظه","فوري","valu","بنك"]):
-            pay = df.groupby("Payment Method").agg(rev=("Value After Discounts","sum"), orders=("Order #","nunique")).sort_values("rev",ascending=False).head(10)
-            out.append(("💳 طرق الدفع", [f"{i+1}. {n} — {r['rev']:,.0f} ج ({r['rev']/tot*100:.1f}%) — {r['orders']:,} أوردر" for i,(n,r) in enumerate(pay.iterrows())]))
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + _GEMINI_KEY
+        payload = {"contents":[{"parts":[{"text":system}]}],
+                   "generationConfig":{"temperature":0.1,"maxOutputTokens":800}}
+        try:
+            resp = _rq.post(url, json=payload, timeout=30)
+            if resp.status_code != 200:
+                return None, f"خطأ من Gemini ({resp.status_code}): {resp.text[:200]}", None
+            data = resp.json()
+            gen_code = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            # clean markdown fences
+            gen_code = gen_code.replace("```python","").replace("```","").strip()
+            return gen_code, None, None
+        except Exception as e:
+            return None, f"خطأ في الاتصال: {e}", None
 
-        if any(k in ql for k in ["منطق","محافظ","region","مدين","قاهر","جيز","اسكندري","ساحل"]):
-            dr = df.copy()
-            dr["R"] = dr["Customer Region"].map(region_map).fillna(dr["Customer Region"])
-            reg = dr.groupby("R").agg(rev=("Value After Discounts","sum"), orders=("Order #","nunique")).sort_values("rev",ascending=False).head(12)
-            out.append(("📍 أعلى المناطق", [f"{i+1}. {n} — {r['rev']:,.0f} ج ({r['rev']/tot*100:.1f}%)" for i,(n,r) in enumerate(reg.iterrows())]))
+    def _exec_code(gen_code, df):
+        import pandas as _pd
+        local_ns = {"df": df, "pd": _pd, "result": None}
+        try:
+            exec(gen_code, {"pd": _pd, "__builtins__": __builtins__}, local_ns)
+            return local_ns.get("result", None), None
+        except Exception as e:
+            return None, str(e)
 
-        if any(k in ql for k in ["كوبون","خصم","coupon","discount","عرض","كود"]):
-            cp = df[df["Coupon Code"].notna()].copy()
-            cp["C"] = cp["Coupon Code"].astype(str).str.strip().str.upper()
-            cp = cp[~cp["C"].isin(["NAN","","NONE"])]
-            if len(cp):
-                cg = cp.groupby("C").agg(rev=("Value After Discounts","sum"), disc=("Discount Amount","sum"), orders=("Order #","nunique")).sort_values("rev",ascending=False).head(10)
-                out.append(("🎟️ الكوبونات", [f"{i+1}. {n} — {r['rev']:,.0f} ج مبيعات — خصم {r['disc']:,.0f} ج — {r['orders']:,} أوردر" for i,(n,r) in enumerate(cg.iterrows())]))
-            else:
-                out.append(("🎟️ الكوبونات", ["مفيش كوبونات في الفترة المختارة"]))
+    # Render history
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-        return out if out else None
+    # Chat input
+    _prompt = st.chat_input("اسأل أي سؤال عن الداتا... (مثال: حلل أسباب اختلاف الفرنتشر بين رتيل وماركت بليس)")
+    if _prompt:
+        st.session_state.chat_history.append({"role":"user","content":_prompt})
+        with st.chat_message("user"):
+            st.markdown(_prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("بحلل..."):
+                gen_code, err, _ = _run_gemini(_prompt, df)
+                if err:
+                    ans = f"❌ {err}"
+                else:
+                    result, exec_err = _exec_code(gen_code, df)
+                    if exec_err:
+                        ans = f"حصلت مشكلة في تنفيذ الكود: {exec_err}"
+                        ans_df = None
+                    else:
+                        ans_df = None
+                        if isinstance(result, pd.DataFrame):
+                            ans_df = result.head(50)
+                            ans = f"النتيجة ({len(result)} صف):"
+                        elif isinstance(result, pd.Series):
+                            ans_df = result.head(50).to_frame()
+                            ans = f"النتيجة ({len(result)} صف):"
+                        else:
+                            ans = str(result)
+                st.markdown(ans)
+                if ans_df is not None:
+                    st.dataframe(ans_df, use_container_width=True)
+        _hist_content = ans
+        if ans_df is not None:
+            try:
+                _hist_content = ans + "\n\n" + ans_df.to_string()
+            except Exception:
+                pass
+        st.session_state.chat_history.append({"role":"assistant","content":_hist_content})
 
-    if _q:
-        _res = _answer(_q, df, region_map)
-        if _res:
-            for title, lines in _res:
-                st.markdown(f"**{title}**")
-                st.markdown("\n".join(f"- {l}" for l in lines))
-                st.markdown("")
-        else:
-            st.info("مش فاهم السؤال. جرب كلمات زي: مبيعات · منتجات · أقسام · طرق دفع · مناطق · كوبونات · مقارنة رتيل وماركت بليس")
+    # Clear button
+    if st.session_state.chat_history:
+        if st.button("🗑️ مسح المحادثة"):
+            st.session_state.chat_history = []
+            st.rerun()
 
 
 st.markdown(f"<p style='text-align:center;color:#aaa;font-size:11px'>Raneen Analytics · {date_from} → {date_to}</p>", unsafe_allow_html=True)
