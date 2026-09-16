@@ -35,10 +35,27 @@ NEEDED_COLS = ["Order #","Purchase Date","Day","Marketplace Seller","Seller_Raw"
                "Discount Amount","Value After Discounts","Coupon Code","Customer Region","Payment Method"]
 
 
+# توحيد أسماء المحافظات (إنجليزي -> عربي) لأن الداتا فيها الاسمين
+REGION_CANONICAL = {
+    "Cairo":"القاهرة","Giza":"الجيزة","Alexandria":"الأسكندرية","Al Sharqia":"الشرقية",
+    "Qalyubia":"القليوبية","Aswan":"أسوان","Al Daqahliya":"الدقهلية","Al Gharbia":"الغربية",
+    "Sohag":"سوهاج","Suez":"السويس","Ismailia":"الأسماعيلية","Asyut":"أسيوط",
+    "Al Fayoum":"الفيوم","Al Beheira":"البحيرة","Red Sea":"البحر الأحمر","Al Monufia":"المنوفية",
+    "Damietta":"دمياط","Kafr El-Sheikh":"كفر الشيخ","Al Meniya":"المنيا","Port Said":"بور سعيد",
+    "Bani Souaif":"بني سويف","Qena":"قنا","Luxor":"الأقصر","North Coast":"الساحل الشمالي",
+    "Al Minufiya":"المنوفية","Matrouh":"مطروح","Beni Suef":"بني سويف","Menoufia":"المنوفية",
+    "Dakahlia":"الدقهلية","Gharbia":"الغربية","Sharqia":"الشرقية","Beheira":"البحيرة",
+    "Minya":"المنيا","Fayoum":"الفيوم","Qaliubiya":"القليوبية","New Valley":"الوادي الجديد",
+    "Matrph":"مطروح","Marsa Matrouh":"مطروح","Wadi El Gedid":"الوادي الجديد",
+}
+
 def optimize(df):
     for c in ["Value After Discounts","Qty Ordered","Item Price","Row Total","Discount Amount"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce").astype("float32").fillna(0)
+    # توحيد المحافظات قبل تحويلها لـ category
+    if "Customer Region" in df.columns:
+        df["Customer Region"] = df["Customer Region"].astype(str).str.strip().replace(REGION_CANONICAL)
     for c in ["Attribute Set","Marketplace Seller","Customer Region","Payment Method"]:
         if c in df.columns:
             df[c] = df[c].astype("category")
@@ -551,7 +568,7 @@ Column meanings:
 - "Main Category": high-level category. Values: {sample_main}
 - "Qty Ordered": units | "Order #": order id (use nunique to count orders)
 - "Payment Method": examples: {sample_pay}
-- "Customer Region": governorate (English)
+- "Customer Region": governorate name in ARABIC (e.g. القاهرة, الجيزة, الأسكندرية) — already unified, no English duplicates
 - "Coupon Code" | "Item Price" | "Purchase Date" | "Day" | "Day_num"
 Data range: {date_min} to {date_max}
 For furniture questions use df[df["Main Category"]=="Furniture"].
