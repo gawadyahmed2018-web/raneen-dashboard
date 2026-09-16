@@ -525,7 +525,7 @@ with pa2:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# ── 🤖 شات التحليل الذكي (Gemini) ────────────────────────────────────────────
+# ── 🤖 شات التحليل الذكي (Multi-step) ────────────────────────────────────────
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown("---")
 st.markdown('<p class="section-title">🤖 اسأل الداتا — تحليل ذكي</p>', unsafe_allow_html=True)
@@ -537,129 +537,159 @@ if not _GEMINI_KEY:
 else:
     import json as _json, requests as _rq
 
-    # Conversation history
+    # ── Load ALL months for cross-month analysis (cached) ──
+    @st.cache_data(ttl=1800, show_spinner=False)
+    def _load_all_months():
+        frames = {}
+        _all_paths = {
+            "raneen_default_data.csv": "الحالي",
+            "archive/raneen_2026_08.csv": "أغسطس",
+            "archive/raneen_2026_07.csv": "يوليو",
+            "archive/raneen_2026_06.csv": "يونيو",
+            "archive/raneen_2026_05.csv": "مايو",
+            "archive/raneen_2026_04.csv": "أبريل",
+        }
+        import requests as _r5, io as _i5
+        parts = []
+        tok = st.secrets.get("GITHUB_TOKEN","")
+        for path in _all_paths:
+            try:
+                url = f"https://raw.githubusercontent.com/gawadyahmed2018-web/raneen-dashboard/main/{path}"
+                res = _r5.get(url, headers={"Authorization":f"token {tok}"} if tok else {}, timeout=20)
+                if res.status_code == 200 and len(res.content) > 200:
+                    parts.append(optimize(pd.read_csv(_i5.StringIO(res.text))))
+            except Exception:
+                pass
+        if not parts:
+            return None
+        alldf = pd.concat(parts, ignore_index=True)
+        alldf["Purchase Date"] = pd.to_datetime(alldf["Purchase Date"], errors="coerce")
+        alldf = alldf.dropna(subset=["Purchase Date"])
+        alldf["Month"] = alldf["Purchase Date"].dt.month
+        alldf["Day_num"] = alldf["Purchase Date"].dt.day
+        if "Main Category" not in alldf.columns:
+            _mp = load_mapping()
+            if _mp:
+                alldf["Main Category"] = alldf["Attribute Set"].astype(str).map(_mp).fillna("Other")
+        return alldf.drop_duplicates(subset=["Order #","SKU","Purchase Date","Value After Discounts"])
+
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    def _gemini_call(prompt, max_tokens=2000):
+    def _gemini_call(prompt, max_tokens=2500):
         url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + _GEMINI_KEY
         payload = {"contents":[{"parts":[{"text":prompt}]}],
                    "generationConfig":{"temperature":0.1,"maxOutputTokens":max_tokens}}
-        resp = _rq.post(url, json=payload, timeout=40)
+        resp = _rq.post(url, json=payload, timeout=60)
         if resp.status_code != 200:
             raise RuntimeError(f"Gemini ({resp.status_code}): {resp.text[:200]}")
-        data = resp.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
-    def _run_gemini(question, df):
-        cols = list(df.columns)
-        sample_cats = df["Attribute Set"].dropna().unique()[:25].tolist() if "Attribute Set" in df.columns else []
-        sample_pay  = df["Payment Method"].dropna().unique()[:15].tolist() if "Payment Method" in df.columns else []
-        sample_main = df["Main Category"].dropna().unique().tolist() if "Main Category" in df.columns else []
-        date_min = str(df["Purchase Date"].min().date()) if "Purchase Date" in df.columns else "?"
-        date_max = str(df["Purchase Date"].max().date()) if "Purchase Date" in df.columns else "?"
-
-        system = f"""You are a data analyst. You have a pandas DataFrame called df already loaded.
-Columns: {cols}
-Column meanings:
-- "Value After Discounts": revenue in EGP (after discount)
-- "Marketplace Seller": "raneen" = Retail, "MP" = Marketplace
-- "Attribute Set": product category. Examples: {sample_cats}
-- "Main Category": high-level category. Values: {sample_main}
-- "Qty Ordered": units | "Order #": order id (use nunique to count orders)
-- "Payment Method": examples: {sample_pay}
-- "Customer Region": governorate name in ARABIC (e.g. القاهرة, الجيزة, الأسكندرية) — already unified, no English duplicates
-- "Coupon Code" | "Item Price" | "Purchase Date" | "Day" | "Day_num"
-Data range: {date_min} to {date_max}
-For furniture questions use df[df["Main Category"]=="Furniture"].
-
-Write Python pandas code to answer this question. Rules:
-- Use the existing df (do not reload)
-- Put the final answer in a variable named result (a string, number, or small DataFrame)
-- Keep code SHORT and COMPLETE (all brackets closed). No imports, no comments.
-- Output ONLY raw Python code, no markdown, no ``` fences.
-
-Question: {question}"""
-        try:
-            gen_code = _gemini_call(system, 2000)
-            gen_code = gen_code.replace("```python","").replace("```","").strip()
-            return gen_code, None, None
-        except Exception as e:
-            return None, str(e), None
-
-    def _explain(question, result_str):
-        """Ask Gemini to explain the numeric result in Arabic."""
-        try:
-            prompt = f"""سؤال المستخدم: {question}
-النتيجة من تحليل الداتا:
-{result_str}
-
-اكتب إجابة موجزة بالعربي المصري تشرح النتيجة للمستخدم. لو فيه أرقام رتّبها بشكل واضح. لو النتيجة تحتاج تفسير أو استنتاج، أضفه باختصار. لا تكتب كود."""
-            return _gemini_call(prompt, 1500)
-        except Exception:
-            return None
-
-    def _exec_code(gen_code, df):
+    def _exec(gen_code, adf):
         import pandas as _pd
-        local_ns = {"df": df, "pd": _pd, "result": None}
+        ns = {"df": adf, "pd": _pd, "result": None}
         try:
-            exec(gen_code, {"pd": _pd, "__builtins__": __builtins__}, local_ns)
-            return local_ns.get("result", None), None
+            exec(gen_code, {"pd": _pd, "__builtins__": __builtins__}, ns)
+            return ns.get("result", None), None
         except Exception as e:
             return None, str(e)
+
+    def _multistep(question, adf):
+        """Agentic loop: plan → run code steps → gather → conclude."""
+        cols = list(adf.columns)
+        cats = adf["Attribute Set"].dropna().unique()[:30].tolist() if "Attribute Set" in adf.columns else []
+        mains = adf["Main Category"].dropna().unique().tolist() if "Main Category" in adf.columns else []
+        months_avail = sorted(adf["Month"].dropna().unique().tolist()) if "Month" in adf.columns else []
+        month_ranges = {}
+        for m in months_avail:
+            sub = adf[adf["Month"]==m]
+            month_ranges[int(m)] = [int(sub["Day_num"].min()), int(sub["Day_num"].max())]
+
+        context = f"""You are a senior sales data analyst for Raneen (Egyptian e-commerce). You have a pandas DataFrame `df` with ALL months loaded.
+Columns: {cols}
+Key columns:
+- "Value After Discounts": revenue EGP | "Marketplace Seller": "raneen"=Retail, "MP"=Marketplace
+- "Attribute Set": category. Examples: {cats}
+- "Main Category": {mains} (furniture = "Furniture")
+- "Month": month number | "Day_num": day of month | "Qty Ordered" | "Order #" (nunique to count)
+- "Payment Method" | "Customer Region" (Arabic) | "Coupon Code" | "Item Price"
+Months available and their day-ranges: {month_ranges}
+IMPORTANT for fair month comparison: use the SAME day range (e.g. Day_num<=16) on each month, because some months are partial.
+
+You work in STEPS. Each step you either:
+A) request data by writing ONE python snippet (uses df, sets `result`), OR
+B) give the final analysis.
+
+Respond in STRICT JSON only:
+{{"action":"code","code":"<python>","why":"<short>"}}  to run a query
+or
+{{"action":"final","answer":"<full arabic analysis>"}}  when done
+
+For "why does X drop/rise" questions you MUST: compare across months (same day-range), break down by sub-category, check coupon vs non-coupon, find disappeared products, then conclude with root cause + recommendation. Do 3-6 code steps then finalize.
+Answer in Egyptian Arabic, structured, with numbers. Question: {question}"""
+
+        history = context
+        gathered = []
+        for step in range(6):
+            try:
+                raw = _gemini_call(history, 2500)
+            except Exception as e:
+                return f"❌ خطأ: {e}", gathered
+            raw = raw.replace("```json","").replace("```python","").replace("```","").strip()
+            try:
+                obj = _json.loads(raw)
+            except Exception:
+                # not valid json — treat as final text
+                return raw, gathered
+            if obj.get("action") == "final":
+                return obj.get("answer","(مافيش إجابة)"), gathered
+            elif obj.get("action") == "code":
+                gen_code = obj.get("code","")
+                res, err = _exec(gen_code, adf)
+                if err:
+                    obs = f"ERROR: {err}"
+                else:
+                    obs = str(res)[:1500] if not isinstance(res,(pd.DataFrame,pd.Series)) else res.to_string()[:1500]
+                gathered.append((obj.get("why",""), gen_code, obs))
+                history += f"\n\nStep {step+1} code:\n{gen_code}\nResult:\n{obs}\n\nContinue (JSON only):"
+            else:
+                return raw, gathered
+        # ran out of steps — ask for final
+        history += "\n\nأعطني الآن الإجابة النهائية (action=final)."
+        try:
+            raw = _gemini_call(history, 2500).replace("```json","").replace("```","").strip()
+            obj = _json.loads(raw)
+            return obj.get("answer", raw), gathered
+        except Exception:
+            return "معلش، محصلتش لإجابة نهائية. جرب تبسّط السؤال.", gathered
 
     # Render history
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Chat input
-    _prompt = st.chat_input("اسأل أي سؤال عن الداتا... (مثال: حلل أسباب اختلاف الفرنتشر بين رتيل وماركت بليس)")
+    _prompt = st.chat_input("اسأل أي سؤال تحليلي... (مثال: ليه انهارت مبيعات الأجهزة؟ قارن الشهور)")
     if _prompt:
         st.session_state.chat_history.append({"role":"user","content":_prompt})
         with st.chat_message("user"):
             st.markdown(_prompt)
         with st.chat_message("assistant"):
-            with st.spinner("بحلل..."):
-                ans_df = None
-                ans = ""
-                gen_code, err, _ = _run_gemini(_prompt, df)
-                if err:
-                    ans = f"❌ خطأ: {err}"
+            with st.spinner("بحلل بعمق (خطوات متعددة)..."):
+                adf = _load_all_months()
+                if adf is None:
+                    ans = "❌ مش قادر أحمّل الداتا."
+                    steps = []
                 else:
-                    result, exec_err = _exec_code(gen_code, df)
-                    # retry once if code failed
-                    if exec_err:
-                        gen_code2, err2, _ = _run_gemini(_prompt + f"\n(الكود السابق فشل بالخطأ: {exec_err}. اكتب كود صحيح وكامل)", df)
-                        if not err2:
-                            result, exec_err = _exec_code(gen_code2, df)
-                    if exec_err:
-                        ans = f"معلش، محصلتش أوصل لإجابة دقيقة. جرب تصيغ السؤال بشكل تاني."
-                    else:
-                        # Build a text representation of the result
-                        if isinstance(result, pd.DataFrame):
-                            ans_df = result.head(50)
-                            result_str = result.head(30).to_string()
-                        elif isinstance(result, pd.Series):
-                            ans_df = result.head(50).to_frame()
-                            result_str = result.head(30).to_string()
-                        else:
-                            result_str = str(result)
-                        # Ask Gemini to explain in Arabic
-                        explanation = _explain(_prompt, result_str)
-                        ans = explanation if explanation else result_str
-                st.markdown(ans)
-                if ans_df is not None:
-                    st.dataframe(ans_df, use_container_width=True)
-        _hist_content = ans
-        if ans_df is not None:
-            try:
-                _hist_content = ans + "\n\n" + ans_df.to_string()
-            except Exception:
-                pass
-        st.session_state.chat_history.append({"role":"assistant","content":_hist_content})
+                    ans, steps = _multistep(_prompt, adf)
+            st.markdown(ans)
+            if steps:
+                with st.expander(f"🔍 خطوات التحليل ({len(steps)})"):
+                    for i,(why,cd,obs) in enumerate(steps,1):
+                        st.markdown(f"**{i}. {why}**")
+                        st.code(cd, language="python")
+                        st.text(obs[:500])
+        st.session_state.chat_history.append({"role":"assistant","content":ans})
 
-    # Clear button
     if st.session_state.chat_history:
         if st.button("🗑️ مسح المحادثة"):
             st.session_state.chat_history = []
